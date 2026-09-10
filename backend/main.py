@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from github_client import run_split, run_parts
+from status import get_status
 
 app = FastAPI(title="生产自动化控制台 API")
 
@@ -21,4 +22,4 @@ def parts():
 
 @app.get("/api/status")
 def status():
-    return {"tasks": []}
+    return get_status()
