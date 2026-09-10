@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "split": {
+      "enabled": true,
+      "time": "22:00"
+    },
+    "parts": {
+      "enabled": true,
+      "time": "17:25"
+    }
+  }
+}
