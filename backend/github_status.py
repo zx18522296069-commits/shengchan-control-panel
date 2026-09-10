@@ -1,10 +1,13 @@
 """GitHub Actions status reader.
 
 Reads workflow execution status for the production control panel.
-The first version keeps repository/workflow mapping centralized here.
+Uses GITHUB_TOKEN from environment when deployed.
 """
 
+import os
 from datetime import datetime
+
+import requests
 
 
 WORKFLOWS = {
@@ -20,16 +23,53 @@ WORKFLOWS = {
 
 
 def get_workflow_status(task):
-    """Return workflow status placeholder.
-
-    GitHub API authentication will be connected in the next step.
-    """
     config = WORKFLOWS.get(task)
+    if not config:
+        return {"task": task, "status": "unknown"}
+
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        return {
+            "task": task,
+            "repository": config["repo"],
+            "workflow": config["workflow"],
+            "status": "token_missing",
+            "checked_at": datetime.utcnow().isoformat(),
+        }
+
+    url = (
+        f"https://api.github.com/repos/{config['repo']}"
+        f"/actions/workflows/{config['workflow']}/runs?per_page=1"
+    )
+
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+
+    if response.status_code != 200:
+        return {
+            "task": task,
+            "status": "api_error",
+            "code": response.status_code,
+            "checked_at": datetime.utcnow().isoformat(),
+        }
+
+    runs = response.json().get("workflow_runs", [])
+    if not runs:
+        status = "no_runs"
+    else:
+        latest = runs[0]
+        status = latest.get("status")
+        if status == "completed":
+            status = latest.get("conclusion") or status
+
     return {
         "task": task,
-        "repository": config["repo"] if config else None,
-        "workflow": config["workflow"] if config else None,
-        "status": "unknown",
+        "repository": config["repo"],
+        "workflow": config["workflow"],
+        "status": status,
         "checked_at": datetime.utcnow().isoformat(),
     }
 
