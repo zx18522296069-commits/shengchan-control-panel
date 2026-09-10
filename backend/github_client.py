@@ -1,54 +1,49 @@
 import os
+
 import requests
 
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 
-def dispatch_workflow(owner_repo, workflow_file, inputs=None):
-    """Trigger GitHub Actions workflow_dispatch."""
+def dispatch_workflow(owner_repo, workflow_file, inputs):
     if not GITHUB_TOKEN:
-        return {
-            "status": "error",
-            "message": "GITHUB_TOKEN not configured"
-        }
+        return {"status": "error", "message": "GITHUB_TOKEN 未配置"}
 
-    url = f"https://api.github.com/repos/{owner_repo}/actions/workflows/{workflow_file}/dispatches"
-
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
-
-    data = {
-        "ref": "main",
-        "inputs": inputs or {}
-    }
-
-    response = requests.post(url, headers=headers, json=data)
-
+    response = requests.post(
+        f"https://api.github.com/repos/{owner_repo}/actions/workflows/{workflow_file}/dispatches",
+        headers={
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        json={"ref": "main", "inputs": inputs},
+        timeout=15,
+    )
     if response.status_code == 204:
-        return {
-            "status": "started",
-            "workflow": workflow_file
-        }
-
+        return {"status": "requested", "workflow": workflow_file}
+    try:
+        message = response.json().get("message", response.text)
+    except ValueError:
+        message = response.text
     return {
         "status": "error",
         "code": response.status_code,
-        "message": response.text
+        "message": message,
     }
 
 
 def run_split():
     return dispatch_workflow(
         "zx18522296069-commits/tuzhichaifen",
-        "split_drawing.yml"
+        "split_drawing.yml",
+        {"dry_run": "false", "only": ""},
     )
 
 
 def run_parts():
     return dispatch_workflow(
         "zx18522296069-commits/weijiagong-lingjian-guidang",
-        "update_parts.yml"
+        "update_parts.yml",
+        {"mode": "production"},
     )

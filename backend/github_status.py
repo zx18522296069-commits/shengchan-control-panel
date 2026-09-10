@@ -1,81 +1,53 @@
-"""GitHub Actions status reader.
-
-Reads workflow execution status for the production control panel.
-Uses GITHUB_TOKEN from environment when deployed.
-"""
-
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
 
 WORKFLOWS = {
-    "split": {
-        "repo": "zx18522296069-commits/tuzhichaifen",
-        "workflow": "split_drawing.yml",
-    },
-    "parts": {
-        "repo": "zx18522296069-commits/weijiagong-lingjian-guidang",
-        "workflow": "update_parts.yml",
-    },
+    "split": ("zx18522296069-commits/tuzhichaifen", "split_drawing.yml"),
+    "parts": ("zx18522296069-commits/weijiagong-lingjian-guidang", "update_parts.yml"),
 }
 
 
 def get_workflow_status(task):
-    config = WORKFLOWS.get(task)
-    if not config:
-        return {"task": task, "status": "unknown"}
-
+    repo, workflow = WORKFLOWS[task]
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     token = os.getenv("GITHUB_TOKEN")
-    if not token:
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        response = requests.get(
+            f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs",
+            headers=headers,
+            params={"per_page": 1},
+            timeout=12,
+        )
+        response.raise_for_status()
+        runs = response.json().get("workflow_runs", [])
+    except requests.RequestException as error:
         return {
-            "task": task,
-            "repository": config["repo"],
-            "workflow": config["workflow"],
-            "status": "token_missing",
-            "checked_at": datetime.utcnow().isoformat(),
+            "task": task, "status": "api_error", "message": str(error),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    url = (
-        f"https://api.github.com/repos/{config['repo']}"
-        f"/actions/workflows/{config['workflow']}/runs?per_page=1"
-    )
-
-    response = requests.get(
-        url,
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10,
-    )
-
-    if response.status_code != 200:
-        return {
-            "task": task,
-            "status": "api_error",
-            "code": response.status_code,
-            "checked_at": datetime.utcnow().isoformat(),
-        }
-
-    runs = response.json().get("workflow_runs", [])
     if not runs:
-        status = "no_runs"
-    else:
-        latest = runs[0]
-        status = latest.get("status")
-        if status == "completed":
-            status = latest.get("conclusion") or status
+        return {"task": task, "status": "no_runs", "checked_at": datetime.now(timezone.utc).isoformat()}
 
+    latest = runs[0]
+    status = latest.get("conclusion") if latest.get("status") == "completed" else latest.get("status")
     return {
         "task": task,
-        "repository": config["repo"],
-        "workflow": config["workflow"],
-        "status": status,
-        "checked_at": datetime.utcnow().isoformat(),
+        "status": status or "unknown",
+        "event": latest.get("event"),
+        "run_started_at": latest.get("run_started_at"),
+        "updated_at": latest.get("updated_at"),
+        "html_url": latest.get("html_url"),
+        "run_number": latest.get("run_number"),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
 def get_all_status():
-    return {
-        "split": get_workflow_status("split"),
-        "parts": get_workflow_status("parts"),
-    }
+    return {key: get_workflow_status(key) for key in WORKFLOWS}

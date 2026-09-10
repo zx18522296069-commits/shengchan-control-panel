@@ -1,12 +1,17 @@
 {
+  "timezone": "Asia/Shanghai",
   "tasks": {
     "split": {
       "enabled": true,
-      "time": "22:00"
+      "schedule_mode": "hourly",
+      "minute": 0,
+      "times": ["22:00"]
     },
     "parts": {
       "enabled": true,
-      "time": "17:25"
+      "schedule_mode": "daily",
+      "minute": 0,
+      "times": ["17:25", "22:00"]
     }
   }
 }
