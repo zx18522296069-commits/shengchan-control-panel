@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://production-control-api.zx18522296069.chatgpt.site').replace(/\/$/, '');
 
 export function hasControlKey() {
   return Boolean(window.sessionStorage.getItem('control-panel-key'));
