@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getStatus, hasControlKey, runParts, runSplit, setControlKey } from './api';
+import { getResult, getStatus, hasControlKey, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 
 const TASKS = {
@@ -8,10 +8,80 @@ const TASKS = {
 };
 
 const STATUS_TEXT = {
-  success: '成功', failure: '失败', cancelled: '已取消', in_progress: '运行中',
+  success: '成功', partial: '部分完成', failure: '失败', cancelled: '已取消', in_progress: '运行中',
   queued: '排队中', requested: '已提交', waiting: '等待中', no_runs: '暂无记录',
   token_missing: '服务未配置', api_error: '读取失败', unknown: '未知',
 };
+
+function ResultPanel({ task, result, loading, error, onClose }) {
+  const meta = TASKS[task];
+  const completion = result?.completion || { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '张图片' : '个订单' };
+  const resultState = taskState(result);
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title">
+        <header className="panel-header">
+          <div><p className="eyebrow">最近一次执行</p><h2 id="result-title">{meta.label}运行结果</h2></div>
+          <button className="close-button" type="button" onClick={onClose} aria-label="关闭">×</button>
+        </header>
+
+        {loading && <div className="result-loading">正在整理本次运行结果…</div>}
+        {error && <div className="result-error"><strong>结果读取失败</strong><span>{error}</span></div>}
+
+        {!loading && !error && result && (
+          <>
+            <div className="result-overview">
+              <div className="completion-ring" style={{ '--progress': `${completion.percent}%` }}>
+                <strong>{completion.percent}%</strong><span>完成度</span>
+              </div>
+              <div className="completion-copy">
+                <span className={`badge ${resultState.tone}`}><span className="status-dot" />{resultState.text}</span>
+                <h3>{completion.completed}/{completion.total} {completion.unit}已完成</h3>
+                <p>{result.summary?.length ? result.summary.join('；') : '本次结果已整理完成'}</p>
+              </div>
+            </div>
+
+            <div className="progress-track" aria-label={`完成度 ${completion.percent}%`}><span style={{ width: `${completion.percent}%` }} /></div>
+
+            <section className="result-block issues-block">
+              <div className="result-block-title"><h3>未完成项目</h3><span>{result.issues?.length || 0}</span></div>
+              {result.issues?.length ? (
+                <ul className="result-list">
+                  {result.issues.map((item, index) => <li className="issue-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
+                </ul>
+              ) : <p className="empty-result">没有发现未完成项目。</p>}
+            </section>
+
+            {result.warnings?.length > 0 && (
+              <section className="result-block warning-block">
+                <div className="result-block-title"><h3>已跳过资料</h3><span>{result.warnings.length}</span></div>
+                <ul className="result-list">
+                  {result.warnings.map((item, index) => <li className="warning-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
+                </ul>
+              </section>
+            )}
+
+            {result.successes?.length > 0 && (
+              <details className="success-details">
+                <summary>查看已完成项目（{result.successes.length}）</summary>
+                <ul className="result-list">
+                  {result.successes.map((item, index) => <li className="success-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.detail}</span></li>)}
+                </ul>
+              </details>
+            )}
+
+            {result.links?.length > 0 && (
+              <div className="result-links">
+                {result.links.map((link) => <a href={link.url} target="_blank" rel="noreferrer" key={link.url}>{link.label} ↗</a>)}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
 
 function formatTime(value) {
   if (!value) return '—';
@@ -26,7 +96,7 @@ function formatTime(value) {
 function taskState(task) {
   const value = task?.status || 'unknown';
   const tone = value === 'success' ? 'success'
-    : ['in_progress', 'queued', 'requested', 'waiting'].includes(value) ? 'running'
+    : ['partial', 'in_progress', 'queued', 'requested', 'waiting'].includes(value) ? 'running'
       : ['failure', 'cancelled', 'api_error'].includes(value) ? 'failed' : 'idle';
   return { value, tone, text: STATUS_TEXT[value] || value };
 }
@@ -39,6 +109,10 @@ function App() {
   const [running, setRunning] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [resultTask, setResultTask] = useState('');
+  const [result, setResult] = useState(null);
+  const [resultLoading, setResultLoading] = useState(false);
+  const [resultError, setResultError] = useState('');
 
   const refreshStatus = useCallback(async (quiet = false) => {
     try {
@@ -102,6 +176,20 @@ function App() {
     }
   }
 
+  async function openResult(key) {
+    setResultTask(key);
+    setResult(null);
+    setResultError('');
+    setResultLoading(true);
+    try {
+      setResult(await getResult(key));
+    } catch (error) {
+      setResultError(error.message);
+    } finally {
+      setResultLoading(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -161,7 +249,7 @@ function App() {
                   <div><dt>最后执行</dt><dd>{formatTime(status[key]?.updated_at || status[key]?.run_started_at)}</dd></div>
                   <div><dt>触发方式</dt><dd>{status[key]?.event === 'schedule' ? '定时' : status[key]?.event ? '手动' : '—'}</dd></div>
                 </dl>
-                {status[key]?.html_url && <a href={status[key].html_url} target="_blank" rel="noreferrer">查看运行详情 →</a>}
+                <button className="result-button" type="button" onClick={() => openResult(key)}>查看运行结果 →</button>
               </article>
             );
           })}
@@ -170,6 +258,7 @@ function App() {
       </section>
 
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {resultTask && <ResultPanel task={resultTask} result={result} loading={resultLoading} error={resultError} onClose={() => setResultTask('')} />}
     </main>
   );
 }
