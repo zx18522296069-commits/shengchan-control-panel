@@ -45,6 +45,10 @@ export function getStatus() {
   return request('/api/status');
 }
 
+export function getResult(task) {
+  return request(`/api/results/${task}`);
+}
+
 export function getConfig() {
   return request('/api/config');
 }
