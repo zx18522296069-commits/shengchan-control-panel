@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getResult, getStatus, hasControlKey, runParts, runSplit, setControlKey } from './api';
+import { getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 
 const TASKS = {
+  draw: { label: '画图', description: '读取网盘来图，生成严格标注的 DXF、预览图和汇总表' },
   split: { label: '拆图', description: '扫描待拆图纸并生成拆图结果' },
   parts: { label: '未加工更新', description: '汇总各订单未加工零件明细' },
 };
@@ -203,11 +204,11 @@ function App() {
       </header>
 
       <section className="action-grid" aria-label="任务操作">
-        <button className="action-card reserved" type="button" onClick={() => setNotice({ tone: 'idle', text: '画图功能已预留，接入规则后即可启用' })}>
+        <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('draw', runDraw)}>
           <span className="action-number">01</span>
           <span className="action-title">画图</span>
-          <span className="action-description">PDF 转 DXF 接口预留</span>
-          <span className="action-state">暂未接入</span>
+          <span className="action-description">{TASKS.draw.description}</span>
+          <span className="action-state">{running === 'draw' ? '提交中…' : '点击执行'}</span>
         </button>
 
         <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('split', runSplit)}>
