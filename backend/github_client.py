@@ -47,3 +47,10 @@ def run_parts():
         "update_parts.yml",
         {"mode": "production"},
     )
+
+def run_draw(order_name=""):
+    return dispatch_workflow(
+        "zx18522296069-commits/pdf-dxf-huatu",
+        "draw.yml",
+        {"order_name": order_name},
+    )
