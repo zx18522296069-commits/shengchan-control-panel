@@ -108,6 +108,7 @@ function App() {
   const [status, setStatus] = useState({});
   const [notice, setNotice] = useState({ tone: 'idle', text: '系统待机，可选择任务执行' });
   const [running, setRunning] = useState('');
+  const [drawOrder, setDrawOrder] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [resultTask, setResultTask] = useState('');
@@ -177,6 +178,15 @@ function App() {
     }
   }
 
+  async function startDraw() {
+    const orderName = drawOrder.trim();
+    if (!orderName) {
+      setNotice({ tone: 'failed', text: '请先输入网盘“赵欣/来图”中的完整订单文件夹名' });
+      return;
+    }
+    await execute('draw', () => runDraw(orderName));
+  }
+
   async function openResult(key) {
     setResultTask(key);
     setResult(null);
@@ -203,8 +213,15 @@ function App() {
         </button>
       </header>
 
+      <section aria-label="画图订单选择" style={{ marginBottom: '18px' }}>
+        <label className="field-label">要画图的订单文件夹名
+          <input type="text" value={drawOrder} onChange={(event) => setDrawOrder(event.target.value)} placeholder="例如：200.UUU-1000_0912" disabled={Boolean(running)} />
+        </label>
+        <p className="refresh-note">必须与网盘“赵欣/来图”中的文件夹名称完全一致，每次只处理这个订单。</p>
+      </section>
+
       <section className="action-grid" aria-label="任务操作">
-        <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('draw', runDraw)}>
+        <button className="action-card" type="button" disabled={Boolean(running)} onClick={startDraw}>
           <span className="action-number">01</span>
           <span className="action-title">画图</span>
           <span className="action-description">{TASKS.draw.description}</span>
