@@ -46,7 +46,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
             <div className="progress-track" aria-label={`完成度 ${completion.percent}%`}><span style={{ width: `${completion.percent}%` }} /></div>
 
             <section className="result-block issues-block">
-              <div className="result-block-title"><h3>未完成项目</h3><span>{result.issues?.length || 0}</span></div>
+              <div className="result-block-title"><h3>{task === 'parts' ? '未移动板材' : '未完成项目'}</h3><span>{result.issues?.length || 0}</span></div>
               {result.issues?.length ? (
                 <ul className="result-list">
                   {result.issues.map((item, index) => <li className="issue-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
