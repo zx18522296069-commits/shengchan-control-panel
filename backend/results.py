@@ -108,7 +108,7 @@ def get_result(task: str) -> dict:
                 else:
                     suggestion = "核对该板拆图结果和当前订单原始汇总表，补齐资料后重新执行。"
                 result["issues"].append({
-                    "title": f"板材 {board_id}",
+                    "title": board_id,
                     "record_status": "未累计、未记录",
                     "cause": reason,
                     "action": suggestion,
