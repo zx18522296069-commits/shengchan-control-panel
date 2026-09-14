@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config_manager import get_config, save_config
 from .github_client import run_draw, run_parts, run_split
 from .github_status import get_all_status
+from .results import get_result
 
 app = FastAPI(title="生产自动化控制台 API")
 origins = [item.strip() for item in os.getenv(
@@ -41,6 +42,15 @@ def draw(payload: dict | None = None): return run_draw((payload or {}).get("orde
 
 @app.get("/api/status", dependencies=[Depends(authorize)])
 def status(): return get_all_status()
+
+@app.get("/api/results/{task}", dependencies=[Depends(authorize)])
+def result(task: str):
+    try:
+        return get_result(task)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except requests.RequestException as error:
+        raise HTTPException(status_code=502, detail=f"GitHub 运行结果读取失败：{error}") from error
 
 @app.get("/api/config", dependencies=[Depends(authorize)])
 def config(): return get_config()
