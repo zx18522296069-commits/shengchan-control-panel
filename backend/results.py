@@ -87,8 +87,14 @@ def get_result(task: str) -> dict:
             fields = [part.strip() for part in detail.split("｜")]
             stage, reason, advice = (fields + ["", "", ""])[:3]
             filename = re.search(r"文件=([^；]+)", reason)
+            file_name = filename.group(1) if filename else "未识别文件"
+            cause = reason.split("；", 1)[1] if "；" in reason else reason
+            action = advice.removeprefix("处理建议=").strip() or "检查图片和对应基础资料后重新执行。"
             result["issues"].append({
-                "title": filename.group(1) if filename else stage,
+                "title": file_name,
+                "record_status": "未生成拆图结果",
+                "cause": f"{stage}：{cause}",
+                "action": action,
                 "reason": "｜".join(part for part in [stage, reason, advice] if part),
             })
         elif task == "parts" and "阻断板材仍保留根目录" in clean:
