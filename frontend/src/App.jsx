@@ -48,10 +48,26 @@ function ResultPanel({ task, result, loading, error, onClose }) {
             <section className="result-block issues-block">
               <div className="result-block-title"><h3>{task === 'parts' ? '未移动板材' : '未完成项目'}</h3><span>{result.issues?.length || 0}</span></div>
               {result.issues?.length ? (
-                <ul className="result-list">
-                  {result.issues.map((item, index) => <li className="issue-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
-                </ul>
-              ) : <p className="empty-result">没有发现未完成项目。</p>}
+                task === 'parts' ? (
+                  <div className="board-result-table" role="table" aria-label="未累计板材处理清单">
+                    <div className="board-result-head" role="row">
+                      <strong>板材</strong><strong>是否累计/记录</strong><strong>为什么没有记录</strong><strong>下一步怎么处理</strong>
+                    </div>
+                    {result.issues.map((item, index) => (
+                      <div className="board-result-row" role="row" key={`${item.title}-${index}`}>
+                        <strong>{item.title}</strong>
+                        <span>{item.record_status || '未累计、未记录'}</span>
+                        <span>{item.cause || item.reason}</span>
+                        <span>{item.action || '核对该板拆图结果和对应订单汇总表后重新执行。'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="result-list">
+                    {result.issues.map((item, index) => <li className="issue-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
+                  </ul>
+                )
+              ) : <p className="empty-result">{task === 'parts' ? '本次没有未累计、未记录的板材。' : '没有发现未完成项目。'}</p>}
             </section>
 
             {result.warnings?.length > 0 && (
