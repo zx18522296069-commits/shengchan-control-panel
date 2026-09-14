@@ -12,6 +12,7 @@
 
 - `frontend/`：React + Vite 页面，通过 GitHub Pages 发布
 - `backend/`：FastAPI 控制服务，安全代理 GitHub Actions 操作
+- `worker/production-control-api/`：线上 Cloudflare Worker 的完整源码、测试与部署清单；与线上服务版本同步管理。拆图结果仅以板材编号为记录主体，字段固定为“是否拆出、原因、下一步”，基础表、订单目录和模板文件只进入“已跳过资料”。
 
 ## 后端环境变量
 
