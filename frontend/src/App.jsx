@@ -18,6 +18,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
   const meta = TASKS[task];
   const completion = result?.completion || { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '张图片' : '个订单' };
   const resultState = taskState(result);
+  const boardRows = task === 'parts' ? (result?.board_results || []) : (result?.issues || []);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -46,17 +47,17 @@ function ResultPanel({ task, result, loading, error, onClose }) {
             <div className="progress-track" aria-label={`完成度 ${completion.percent}%`}><span style={{ width: `${completion.percent}%` }} /></div>
 
             <section className="result-block issues-block">
-              <div className="result-block-title"><h3>{task === 'parts' ? '未移动板材' : '未拆出板材'}</h3><span>{result.issues?.length || 0}</span></div>
-              {result.issues?.length ? (
+              <div className="result-block-title"><h3>{task === 'parts' ? '本次板材处理清单' : '未拆出板材'}</h3><span>{boardRows.length}</span></div>
+              {boardRows.length ? (
                 ['parts', 'split'].includes(task) ? (
-                  <div className="board-result-table" role="table" aria-label={task === 'parts' ? '未累计板材处理清单' : '未拆出板材处理清单'}>
+                  <div className="board-result-table" role="table" aria-label={task === 'parts' ? '本次板材处理清单' : '未拆出板材处理清单'}>
                     <div className="board-result-head" role="row">
-                      <strong>{task === 'parts' ? '板材编号（待移动文件名）' : '板材编号（待拆文件名）'}</strong>
-                      <strong>{task === 'parts' ? '是否累计/记录' : '是否拆出结果'}</strong>
-                      <strong>{task === 'parts' ? '为什么没有记录' : '为什么没有拆出'}</strong>
+                      <strong>{task === 'parts' ? '板材编号（完成文件名）' : '板材编号（待拆文件名）'}</strong>
+                      <strong>{task === 'parts' ? '录入情况' : '是否拆出结果'}</strong>
+                      <strong>{task === 'parts' ? '处理说明' : '为什么没有拆出'}</strong>
                       <strong>下一步怎么处理</strong>
                     </div>
-                    {result.issues.map((item, index) => (
+                    {boardRows.map((item, index) => (
                       <div className="board-result-row" role="row" key={`${item.title}-${index}`}>
                         <strong>{item.title}</strong>
                         <span>{item.record_status || '未累计、未记录'}</span>
@@ -70,7 +71,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
                     {result.issues.map((item, index) => <li className="issue-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
                   </ul>
                 )
-              ) : <p className="empty-result">{task === 'parts' ? '本次没有未累计、未记录的板材。' : '没有发现未完成项目。'}</p>}
+              ) : <p className="empty-result">{task === 'parts' ? '本次运行未进入逐板处理阶段；请查看下方“已跳过资料”。' : '没有发现未完成项目。'}</p>}
             </section>
 
             {result.warnings?.length > 0 && (
