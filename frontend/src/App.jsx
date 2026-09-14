@@ -3,9 +3,9 @@ import { getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setCo
 import Settings from './pages/Settings';
 
 const TASKS = {
-  draw: { label: '画图', description: '读取网盘来图，生成严格标注的 DXF、预览图和汇总表' },
   split: { label: '拆图', description: '扫描待拆图纸并生成拆图结果' },
   parts: { label: '未加工更新', description: '汇总各订单未加工零件明细' },
+  draw: { label: '画图', description: '读取网盘来图，生成严格标注的 DXF、预览图和汇总表' },
 };
 
 const STATUS_TEXT = {
@@ -240,25 +240,20 @@ function App() {
       </section>
 
       <section className="action-grid" aria-label="任务操作">
-        <button className="action-card" type="button" disabled={Boolean(running)} onClick={startDraw}>
-          <span className="action-number">01</span>
-          <span className="action-title">画图</span>
-          <span className="action-description">{TASKS.draw.description}</span>
-          <span className="action-state">{running === 'draw' ? '提交中…' : '点击执行'}</span>
-        </button>
-
         <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('split', runSplit)}>
-          <span className="action-number">02</span>
-          <span className="action-title">拆图</span>
+          <span className="action-number">01</span><span className="action-title">拆图</span>
           <span className="action-description">{TASKS.split.description}</span>
           <span className="action-state">{running === 'split' ? '提交中…' : '点击执行'}</span>
         </button>
-
         <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('parts', runParts)}>
-          <span className="action-number">03</span>
-          <span className="action-title">未加工更新</span>
+          <span className="action-number">02</span><span className="action-title">未加工更新</span>
           <span className="action-description">{TASKS.parts.description}</span>
           <span className="action-state">{running === 'parts' ? '提交中…' : '点击执行'}</span>
+        </button>
+        <button className="action-card" type="button" disabled={Boolean(running)} onClick={startDraw}>
+          <span className="action-number">03</span><span className="action-title">画图</span>
+          <span className="action-description">{TASKS.draw.description}</span>
+          <span className="action-state">{running === 'draw' ? '提交中…' : '点击执行'}</span>
         </button>
       </section>
 
