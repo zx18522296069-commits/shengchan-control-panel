@@ -74,9 +74,12 @@ def get_result(task: str) -> dict:
         result["summary"] = [f"运行结果读取失败：{error}"]
         return result
     scanned = re.search(r"扫描到 (\\d+) 张未完成图片", log)
+    pending_boards = re.search(r"待处理板材(\\d+)张", log)
     if scanned:
         total = int(scanned.group(1))
         result["completion"].update({"total": total, "unit": "张图片"})
+    elif pending_boards:
+        result["completion"].update({"total": int(pending_boards.group(1)), "unit": "张板材"})
     for line in log.splitlines():
         clean = re.sub(r"^\\d{4}-\\d{2}-\\d{2}T[^ ]+Z\\s+", "", line).strip()
         if "处理失败｜阶段=" in clean:
@@ -88,6 +91,22 @@ def get_result(task: str) -> dict:
                 "title": filename.group(1) if filename else stage,
                 "reason": "｜".join(part for part in [stage, reason, advice] if part),
             })
+        elif task == "parts" and "阻断板材仍保留根目录" in clean:
+            match = re.search(r"阻断板材仍保留根目录\\s+(.+?):\\s*(.+)$", clean)
+            if match:
+                board_id, reason = match.groups()
+                if "不在“正在加工”" in reason or "无订单" in reason:
+                    suggestion = "把对应订单的正式原始汇总表放入“正在加工”，再执行一次未加工更新。"
+                elif "无匹配" in reason:
+                    suggestion = "核对订单号、图号、厚度、基础件数和基础总重量是否与原始汇总表一致。"
+                else:
+                    suggestion = "核对该板拆图结果和当前订单原始汇总表，补齐资料后重新执行。"
+                result["issues"].append({
+                    "title": f"板材 {board_id} 未移动到已录入数量",
+                    "reason": f"原因：{reason}｜处理建议：{suggestion}",
+                })
+        elif task == "parts" and "已归档拆图结果:" in clean:
+            result["successes"].append({"title": clean, "detail": "已移动到已录入数量"})
         elif "处理完成" in clean and "->" in clean:
             result["successes"].append({"title": clean, "detail": "已生成并归档"})
     if result["issues"]:
