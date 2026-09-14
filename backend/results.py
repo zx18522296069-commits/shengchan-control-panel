@@ -17,6 +17,12 @@ def _headers() -> dict:
     return headers
 
 
+def _split_board_id(filename: str) -> str:
+    """待拆板材编号取图片文件名，保留 #-1 等完整小序号。"""
+    name = re.sub(r"^完成_", "", filename.strip())
+    return re.sub(r"\.[^.]+$", "", name) or filename
+
+
 def _latest_run(repo: str, workflow: str) -> dict:
     response = requests.get(
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs",
@@ -91,8 +97,8 @@ def get_result(task: str) -> dict:
             cause = reason.split("；", 1)[1] if "；" in reason else reason
             action = advice.removeprefix("处理建议=").strip() or "检查图片和对应基础资料后重新执行。"
             result["issues"].append({
-                "title": file_name,
-                "record_status": "未生成拆图结果",
+                "title": _split_board_id(file_name),
+                "record_status": "未拆出结果",
                 "cause": f"{stage}：{cause}",
                 "action": action,
                 "reason": "｜".join(part for part in [stage, reason, advice] if part),
