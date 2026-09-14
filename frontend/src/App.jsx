@@ -46,14 +46,14 @@ function ResultPanel({ task, result, loading, error, onClose }) {
             <div className="progress-track" aria-label={`完成度 ${completion.percent}%`}><span style={{ width: `${completion.percent}%` }} /></div>
 
             <section className="result-block issues-block">
-              <div className="result-block-title"><h3>{task === 'parts' ? '未移动板材' : '未完成项目'}</h3><span>{result.issues?.length || 0}</span></div>
+              <div className="result-block-title"><h3>{task === 'parts' ? '未移动板材' : '未拆出板材'}</h3><span>{result.issues?.length || 0}</span></div>
               {result.issues?.length ? (
                 ['parts', 'split'].includes(task) ? (
-                  <div className="board-result-table" role="table" aria-label={task === 'parts' ? '未累计板材处理清单' : '未生成拆图结果清单'}>
+                  <div className="board-result-table" role="table" aria-label={task === 'parts' ? '未累计板材处理清单' : '未拆出板材处理清单'}>
                     <div className="board-result-head" role="row">
-                      <strong>{task === 'parts' ? '板材编号（待移动文件名）' : '图片'}</strong>
-                      <strong>{task === 'parts' ? '是否累计/记录' : '是否生成结果'}</strong>
-                      <strong>{task === 'parts' ? '为什么没有记录' : '为什么没有生成'}</strong>
+                      <strong>{task === 'parts' ? '板材编号（待移动文件名）' : '板材编号（待拆文件名）'}</strong>
+                      <strong>{task === 'parts' ? '是否累计/记录' : '是否拆出结果'}</strong>
+                      <strong>{task === 'parts' ? '为什么没有记录' : '为什么没有拆出'}</strong>
                       <strong>下一步怎么处理</strong>
                     </div>
                     {result.issues.map((item, index) => (
