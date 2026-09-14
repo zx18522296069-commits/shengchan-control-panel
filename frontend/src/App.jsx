@@ -48,10 +48,13 @@ function ResultPanel({ task, result, loading, error, onClose }) {
             <section className="result-block issues-block">
               <div className="result-block-title"><h3>{task === 'parts' ? '未移动板材' : '未完成项目'}</h3><span>{result.issues?.length || 0}</span></div>
               {result.issues?.length ? (
-                task === 'parts' ? (
-                  <div className="board-result-table" role="table" aria-label="未累计板材处理清单">
+                ['parts', 'split'].includes(task) ? (
+                  <div className="board-result-table" role="table" aria-label={task === 'parts' ? '未累计板材处理清单' : '未生成拆图结果清单'}>
                     <div className="board-result-head" role="row">
-                      <strong>板材</strong><strong>是否累计/记录</strong><strong>为什么没有记录</strong><strong>下一步怎么处理</strong>
+                      <strong>{task === 'parts' ? '板材' : '图片'}</strong>
+                      <strong>{task === 'parts' ? '是否累计/记录' : '是否生成结果'}</strong>
+                      <strong>{task === 'parts' ? '为什么没有记录' : '为什么没有生成'}</strong>
+                      <strong>下一步怎么处理</strong>
                     </div>
                     {result.issues.map((item, index) => (
                       <div className="board-result-row" role="row" key={`${item.title}-${index}`}>
