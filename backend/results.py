@@ -63,7 +63,7 @@ def get_result(task: str) -> dict:
     result = {
         "task": task, "status": status.get("status", "unknown"),
         "run_number": status.get("run_number"), "links": [],
-        "summary": [], "issues": [], "warnings": [], "successes": [],
+        "summary": [], "issues": [], "board_results": [], "warnings": [], "successes": [],
         "completion": {"percent": 0, "completed": 0, "total": 0, "unit": "项"},
     }
     if status.get("html_url"):
@@ -102,6 +102,22 @@ def get_result(task: str) -> dict:
                 "cause": f"{stage}：{cause}",
                 "action": action,
                 "reason": "｜".join(part for part in [stage, reason, advice] if part),
+            })
+        elif task == "parts" and "板材处理结果｜" in clean:
+            fields = {
+                key: value
+                for key, value in (
+                    part.split("=", 1)
+                    for part in clean.split("｜")[1:]
+                    if "=" in part
+                )
+            }
+            board_id = fields.get("板材") or fields.get("文件") or "未识别板材"
+            result["board_results"].append({
+                "title": board_id,
+                "record_status": fields.get("状态", "状态未确认"),
+                "cause": fields.get("原因", "未提供说明"),
+                "action": fields.get("处理建议", "核对后重新执行。"),
             })
         elif task == "parts" and "阻断板材仍保留根目录" in clean:
             match = re.search(r"阻断板材仍保留根目录\s+(.+?):\s*(.+)$", clean)
