@@ -71,14 +71,19 @@ global.fetch = async (url) => {
   }
   if (String(url).includes("/actions/runs/2260/jobs")) return Response.json({ jobs: [{ id: 2261, name: "split" }] });
   if (String(url).includes("/actions/jobs/2261/logs")) return new Response([
+    "2026-09-15 03:51:00,100 INFO 扫描到 4 张未完成图片/PDF",
     "2026-09-14 15:43:12,697 WARNING 跳过不可读基础表：模板.xlsm：未找到汇总表表头",
     "2026-09-14 15:48:38,704 ERROR 处理失败｜阶段=图片识别失败｜文件=#2260.png；OCR/版式识别未通过：零件图号在多次 OCR 中不一致，无法安全匹配模板｜处理建议=重点检查序号后的零件图号是否清晰、完整，以及钢板重量是否可读；标题栏和程序号不作为失败条件。确认后保留原文件重新执行。",
+    "2026-09-15 03:51:30,704 INFO 验证完成: #2330 T30退0.pdf -> #2330_完成.xlsx",
   ].join("\n"));
   return Response.json({});
 };
 const splitResult = await worker.fetch(request("/api/results/split"), env);
 assert.equal(splitResult.status, 200);
 const splitPayload = await splitResult.json();
+assert.equal(splitPayload.status, "partial");
+assert.deepEqual(splitPayload.completion, { percent: 25, completed: 1, total: 4, unit: "张图片" });
+assert.deepEqual(splitPayload.successes, [{ title: "#2330", detail: "已生成 #2330_完成.xlsx" }]);
 assert.equal(splitPayload.issues.length, 1);
 assert.deepEqual(splitPayload.issues[0], {
   title: "#2260",
