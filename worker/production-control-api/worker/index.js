@@ -198,6 +198,16 @@ function uniqueItems(items) {
   });
 }
 
+// 前端所有拆图结果都以待拆文件开头的板材编号为入口。
+// “#2323 … (1)”中的 (1) 是同板号小序号，须保留；厚度、余料等
+// 文件名后缀不是板材编号，不能显示在结果标题中。
+function splitBoardId(filename) {
+  const stem = String(filename || "")
+    .replace(/^完成_/, "")
+    .replace(/\.[^.]+$/, "");
+  return stem.match(/#\d+(?:\s*\(\d+\))?/)?.[0] || stem.split(/\s+/)[0] || stem;
+}
+
 function fatalIssue(lines) {
   const candidates = lines
     .map((line) => line.match(/(?:ValueError|RuntimeError|FileNotFoundError):\s*(.+)$/)?.[1])
@@ -258,7 +268,7 @@ function parsePartsResult(log, latest) {
 
 function parseSplitResult(log, latest) {
   const lines = log.split(/\r?\n/).map(cleanLogLine);
-  const total = Number(lines.map((line) => line.match(/扫描到\s+(\d+)\s+张未完成图片/)?.[1]).filter(Boolean).at(-1) || 0);
+  const total = Number(lines.map((line) => line.match(/扫描到\s+(\d+)\s+张未完成(?:图片|图片\/PDF)/)?.[1]).filter(Boolean).at(-1) || 0);
   const successes = [];
   const issues = [];
   const warnings = [];
@@ -269,7 +279,7 @@ function parseSplitResult(log, latest) {
     match = line.match(/^处理失败｜阶段=([^｜]+)｜文件=([^；]+)；([^｜]+)｜处理建议=(.+)$/);
     if (match) {
       const [, stage, filename, cause, action] = match;
-      const boardId = filename.replace(/^完成_/, "").replace(/\.[^.]+$/, "");
+      const boardId = splitBoardId(filename);
       issues.push({
         title: boardId,
         record_status: "未拆出",
@@ -278,8 +288,11 @@ function parseSplitResult(log, latest) {
         reason: `${stage}：${cause}｜下一步：${action}`,
       });
     }
-    match = line.match(/^处理(?:成功|完成)：(.+?)(?:：(.+))?$/);
-    if (match) successes.push({ title: match[1], detail: match[2] || "已生成拆图结果" });
+    match = line.match(/^(?:处理|验证)(?:成功|完成)[：:]\s*(.+?)(?:\s*->\s*(.+))?$/);
+    if (match) successes.push({
+      title: splitBoardId(match[1]),
+      detail: match[2] ? `已生成 ${match[2]}` : "已生成拆图结果",
+    });
     match = line.match(/^跳过不可读基础表：(.+?)：(.+)$/);
     if (match) warnings.push({ title: match[1], reason: match[2] });
   }
