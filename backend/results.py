@@ -55,6 +55,20 @@ def _job_log(repo: str, run_id: int) -> str:
         )
 
 
+def _parts_board_success(item: dict) -> bool:
+    status = str(item.get("record_status") or "")
+    return status.startswith("已") and "未" not in status
+
+
+def _dedupe_by_title(items: list[dict]) -> list[dict]:
+    rows: dict[str, dict] = {}
+    for item in items:
+        title = str(item.get("title") or "").strip()
+        if title:
+            rows[title] = item
+    return list(rows.values())
+
+
 def get_result(task: str) -> dict:
     if task not in WORKFLOWS:
         raise ValueError("未知任务")
@@ -81,20 +95,29 @@ def get_result(task: str) -> dict:
         result["summary"] = [f"运行结果读取失败：{error}"]
         return result
 
-    # 新日志统一称“图纸文件”，同时兼容历史“张未完成图片/PDF”日志。
     scanned = re.search(
         r"扫描到\s+(\d+)\s+(?:个未完成图纸文件(?:（图片/PDF）)?|张未完成图片(?:/PDF)?)",
         log,
     )
-    pending_boards = re.search(r"待处理板材(\d+)张", log)
-    if scanned:
-        total = int(scanned.group(1))
-        result["completion"].update({"total": total, "unit": "个图纸文件"})
+    pending_boards = (
+        re.search(r"拆图结果根目录待处理完成文件\s+(\d+)\s+个", log)
+        or re.search(r"待处理板材\s*(\d+)\s*张", log)
+    )
+    if task == "parts" and pending_boards:
+        result["completion"].update({"total": int(pending_boards.group(1)), "unit": "张板材"})
+    elif scanned:
+        result["completion"].update({"total": int(scanned.group(1)), "unit": "个图纸文件"})
     elif pending_boards:
         result["completion"].update({"total": int(pending_boards.group(1)), "unit": "张板材"})
 
+    fallback_board_issues: list[dict] = []
+
     for line in log.splitlines():
         clean = re.sub(r"^\d{4}-\d{2}-\d{2}T[^ ]+Z\s+", "", line).strip()
+        clean = re.sub(r"^\[[^\]]+\]\s+(?:INFO|WARNING|ERROR)\s+", "", clean).strip()
+        clean = re.sub(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d+\s+(?:INFO|WARNING|ERROR)\s+", "", clean).strip()
+        clean = re.sub(r"^(?:INFO|WARNING|ERROR)\s+", "", clean).strip()
+
         if "处理失败｜阶段=" in clean:
             detail = clean.split("处理失败｜阶段=", 1)[1]
             fields = [part.strip() for part in detail.split("｜")]
@@ -136,7 +159,7 @@ def get_result(task: str) -> dict:
                     suggestion = "核对订单号、图号、厚度、基础件数和基础总重量是否与原始汇总表一致。"
                 else:
                     suggestion = "核对该板拆图结果和当前订单原始汇总表，补齐资料后重新执行。"
-                result["issues"].append({
+                fallback_board_issues.append({
                     "title": board_id,
                     "record_status": "未累计、未记录",
                     "cause": reason,
@@ -155,6 +178,31 @@ def get_result(task: str) -> dict:
                 })
         elif "处理完成" in clean and "->" in clean:
             result["successes"].append({"title": clean, "detail": "已生成并归档"})
+
+    if task == "parts":
+        result["board_results"] = _dedupe_by_title(result["board_results"])
+        canonical_titles = {item["title"] for item in result["board_results"]}
+        for item in fallback_board_issues:
+            if item["title"] not in canonical_titles:
+                result["board_results"].append(item)
+
+        board_total = result["completion"]["total"] or len(result["board_results"])
+        classified = len(result["board_results"])
+        succeeded = sum(1 for item in result["board_results"] if _parts_board_success(item))
+        failed = classified - succeeded
+        result["completion"].update({
+            "total": board_total,
+            "completed": classified,
+            "percent": round(100 * classified / max(board_total, 1)),
+            "unit": "张板材",
+        })
+        if classified:
+            if failed:
+                result["status"] = "partial" if succeeded else "failure"
+            elif classified >= board_total:
+                result["status"] = "success"
+            result["summary"] = [f"本次扫描 {board_total} 张板材：已处理 {succeeded} 张，未成功 {failed} 张"]
+            return result
 
     if result["issues"]:
         result["completion"]["completed"] = len(result["successes"])
