@@ -82,6 +82,23 @@ function normalizePartsResult(payload) {
     });
   }
 
+  // 兼容尚未更新的线上 Worker：历史已入账但本次无法复核的板材，
+  // 旧接口可能放在 warnings 而不是 issues。只把明确“本次未成功”的逐板 warning 补进来，
+  // 普通订单源/资料 warning 不参与板材计数。
+  for (const item of Array.isArray(payload.warnings) ? payload.warnings : []) {
+    const key = boardKey(item);
+    if (!key || rows.has(key)) continue;
+    const detail = `${item.record_status || ''} ${item.cause || ''} ${item.reason || ''} ${item.detail || ''}`;
+    if (!/无法复核|无法安全补归档|保留根目录|内容冲突|内容不同|不重复扣减、不归档|未累计|未记录/.test(detail)) continue;
+    rows.set(key, {
+      title: item.title || key,
+      board_id: key,
+      record_status: '未累计、未记录',
+      cause: item.cause || item.reason || item.detail || '本次未能安全完成入账',
+      action: item.action || '核对该板当前文件与历史入账记录及对应订单原始汇总表后重新执行。',
+    });
+  }
+
   const boardResults = [...rows.values()];
   const completed = boardResults.filter(isSuccessfulBoard).length;
   const total = boardResults.length;
