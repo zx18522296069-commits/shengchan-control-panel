@@ -45,8 +45,13 @@ def run_parts():
     return dispatch_workflow(
         "zx18522296069-commits/weijiagong-lingjian-guidang",
         "update_parts.yml",
-        {"mode": "production"},
+        {
+            "mode": "production",
+            "trigger_source": "control-panel-manual",
+            "scheduled_for": "",
+        },
     )
+
 
 def run_draw(order_name=""):
     return dispatch_workflow(
