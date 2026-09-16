@@ -45,6 +45,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Test production API Worker status parsing
+        working-directory: .
+        run: node worker/production-control-api/tests/worker.test.mjs
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
