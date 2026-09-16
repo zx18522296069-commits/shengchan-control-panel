@@ -26,8 +26,8 @@ global.fetch = async (url, init = {}) => {
   if (String(url).includes("/dispatches")) return new Response(null, { status: 204 });
   if (String(url).includes("/actions/workflows/") && String(url).includes("/runs?")) {
     return Response.json({ workflow_runs: [{
-      id: 123, run_number: 14, status: "completed", conclusion: "failure",
-      event: "workflow_dispatch", updated_at: "2026-09-11T11:35:09Z", html_url: "https://example.test/run/123",
+      id: 123, run_number: 14, status: "completed", conclusion: "success",
+      event: "workflow_dispatch", updated_at: "2026-09-16T08:20:09Z", html_url: "https://example.test/run/123",
     }] });
   }
   if (String(url).includes("/actions/runs/123/jobs")) {
@@ -35,10 +35,17 @@ global.fetch = async (url, init = {}) => {
   }
   if (String(url).includes("/actions/jobs/456/logs")) {
     return new Response([
-      "2026-09-11T11:33:51Z [2026-09-11T19:33:51+08:00] INFO 发现订单原始汇总表 2 个",
-      "2026-09-11T11:34:01Z [2026-09-11T19:34:01+08:00] INFO 读取订单源 159.26-07-15  YT71S-2500Z-0715 已做完核算表：56 条零件",
-      "2026-09-11T11:34:02Z [2026-09-11T19:34:02+08:00] WARNING 订单源未完成 THP11-10000Q-0825: 订单号不一致",
-      "2026-09-11T11:34:03Z [2026-09-11T19:34:03+08:00] INFO 板材 #88 编号重复但内容不同：按新板材继续校验并分别入账",
+      "2026-09-16T08:18:51Z [2026-09-16T16:18:51+08:00] INFO 发现订单原始汇总表 22 个",
+      "2026-09-16T08:18:52Z [2026-09-16T16:18:52+08:00] INFO 拆图结果根目录待处理完成文件 2 个",
+      "2026-09-16T08:18:53Z [2026-09-16T16:18:53+08:00] INFO 复用订单源缓存 159.26-07-15  YT71S-2500Z-0715：56 条零件",
+      "2026-09-16T08:18:54Z [2026-09-16T16:18:54+08:00] INFO 重新读取订单源 THP10-8000J-0911：18 条零件",
+      "2026-09-16T08:18:55Z [2026-09-16T16:18:55+08:00] INFO 订单源增量处理：复用缓存 21 个，重新下载解析 1 个",
+      "2026-09-16T08:19:01Z [2026-09-16T16:19:01+08:00] INFO 板材 #88 校验通过：计入 4 件",
+      "2026-09-16T08:19:10Z [2026-09-16T16:19:10+08:00] INFO 板材处理结果｜文件=#88_完成.xlsx｜板材=#88｜状态=已累计、已录入｜原因=首次校验通过并已写回累计台账｜处理建议=无",
+      "2026-09-16T08:19:11Z [2026-09-16T16:19:11+08:00] WARNING 板材 #89 阻断：基础数据不唯一",
+      "2026-09-16T08:19:12Z [2026-09-16T16:19:12+08:00] WARNING 板材处理结果｜文件=#89_完成.xlsx｜板材=#89｜状态=未累计、未记录｜原因=基础数据不唯一｜处理建议=核对该板拆图结果和对应订单原始汇总表后重新执行。",
+      "2026-09-16T08:19:13Z [2026-09-16T16:19:13+08:00] INFO 生成后活动订单当前剩余件数 123",
+      "2026-09-16T08:19:14Z [2026-09-16T16:19:14+08:00] INFO 生成后活动订单当前未出重量 45.678 t",
     ].join("\n"));
   }
   return Response.json({});
@@ -57,11 +64,38 @@ assert.deepEqual(Object.keys(await status.json()).sort(), ["parts", "split"]);
 const result = await worker.fetch(request("/api/results/parts"), env);
 assert.equal(result.status, 200);
 const resultPayload = await result.json();
-assert.equal(resultPayload.completion.percent, 50);
-assert.equal(resultPayload.completion.completed, 1);
-assert.equal(resultPayload.issues[0].title, "THP11-10000Q-0825");
-assert.match(resultPayload.issues[0].reason, /订单号不一致/);
-assert.equal(resultPayload.warnings[0].title, "同号板材 #88");
+assert.equal(resultPayload.status, "partial");
+assert.deepEqual(resultPayload.completion, { percent: 50, completed: 1, total: 2, unit: "张板材" });
+assert.equal(resultPayload.successes.length, 1);
+assert.equal(resultPayload.successes[0].title, "板材 #88");
+assert.equal(resultPayload.issues.length, 1);
+assert.equal(resultPayload.issues[0].title, "#89（#89_完成.xlsx）");
+assert.equal(resultPayload.issues[0].record_status, "未累计、未记录");
+assert.match(resultPayload.issues[0].reason, /基础数据不唯一/);
+assert.match(resultPayload.summary.join("｜"), /复用缓存 21 个，重新下载解析 1 个/);
+assert.match(resultPayload.summary.join("｜"), /当前剩余 123 件/);
+assert.match(resultPayload.summary.join("｜"), /45\.678 t/);
+
+// 无待处理板材时，成功运行应显示“台账已刷新”，不能显示 0/N 个订单失败。
+global.fetch = async (url) => {
+  if (String(url).includes("/actions/workflows/") && String(url).includes("/runs?")) {
+    return Response.json({ workflow_runs: [{ id: 124, run_number: 15, status: "completed", conclusion: "success", event: "workflow_dispatch", updated_at: "2026-09-16T08:30:09Z", html_url: "https://example.test/run/124" }] });
+  }
+  if (String(url).includes("/actions/runs/124/jobs")) return Response.json({ jobs: [{ id: 457, name: "update" }] });
+  if (String(url).includes("/actions/jobs/457/logs")) return new Response([
+    "2026-09-16 16:29:01,100 INFO 发现订单原始汇总表 22 个",
+    "2026-09-16 16:29:02,100 INFO 拆图结果根目录待处理完成文件 0 个",
+    "2026-09-16 16:29:03,100 INFO 订单源增量处理：复用缓存 22 个，重新下载解析 0 个",
+    "2026-09-16 16:29:04,100 INFO 生成后活动订单当前剩余件数 123",
+  ].join("\n"));
+  return Response.json({});
+};
+const noBoardResult = await worker.fetch(request("/api/results/parts"), env);
+const noBoardPayload = await noBoardResult.json();
+assert.equal(noBoardPayload.status, "success");
+assert.deepEqual(noBoardPayload.completion, { percent: 100, completed: 0, total: 0, unit: "张板材" });
+assert.match(noBoardPayload.summary[0], /没有待处理板材/);
+assert.match(noBoardPayload.summary.join("｜"), /复用缓存 22 个，重新下载解析 0 个/);
 
 // 新生产日志以“图纸文件”统计；同时验证 PDF 原生文本成功和 PDF 失败提示。
 global.fetch = async (url) => {
@@ -113,4 +147,4 @@ assert.equal(oldSplitPayload.successes[0].title, "#2330");
 assert.equal(oldSplitPayload.issues[0].title, "#2260");
 
 global.fetch = originalFetch;
-console.log("Worker route, authentication, dispatch, PDF parsing, and status tests passed");
+console.log("Worker route, authentication, dispatch, incremental parts status, PDF parsing, and status tests passed");
