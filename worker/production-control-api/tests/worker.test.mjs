@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import worker from "../worker/index.js";
+import worker, { duePartsSlots, runSchedulerTick } from "../worker/index.js";
 
 const env = { CONTROL_PANEL_KEY: "test-key", GITHUB_TOKEN: "test-token" };
 const origin = "https://zx18522296069-commits.github.io";
@@ -9,6 +9,10 @@ function request(path, init = {}) {
     ...init,
     headers: { origin, "x-control-key": "test-key", ...(init.headers || {}) },
   });
+}
+
+function encoded(value) {
+  return Buffer.from(typeof value === "string" ? value : JSON.stringify(value), "utf8").toString("base64");
 }
 
 const health = await worker.fetch(new Request("https://api.example/"), env);
@@ -56,6 +60,16 @@ assert.equal(split.status, 200);
 assert.equal((await split.json()).status, "requested");
 assert.match(calls[0].url, /tuzhichaifen\/actions\/workflows\/split_drawing\.yml\/dispatches$/);
 assert.deepEqual(JSON.parse(calls[0].init.body).inputs, { dry_run: "false", only: "" });
+
+const partsRun = await worker.fetch(request("/api/run/parts", { method: "POST" }), env);
+assert.equal(partsRun.status, 200);
+const partsRunBody = JSON.parse(calls[1].init.body);
+assert.match(calls[1].url, /weijiagong-lingjian-guidang\/actions\/workflows\/update_parts\.yml\/dispatches$/);
+assert.deepEqual(partsRunBody.inputs, {
+  mode: "production",
+  trigger_source: "control-panel-manual",
+  scheduled_for: "",
+});
 
 const status = await worker.fetch(request("/api/status"), env);
 assert.equal(status.status, 200);
@@ -146,5 +160,102 @@ assert.equal(oldSplitPayload.completion.unit, "个图纸文件");
 assert.equal(oldSplitPayload.successes[0].title, "#2330");
 assert.equal(oldSplitPayload.issues[0].title, "#2260");
 
+// 调度判定：命中前端计划才触发；禁用、已触发、或配置更新时间晚于计划都不得触发。
+const scheduleConfig = {
+  timezone: "Asia/Shanghai",
+  tasks: {
+    split: { enabled: false, schedule_mode: "daily", minute: 0, times: [] },
+    parts: {
+      enabled: true,
+      schedule_mode: "daily",
+      minute: 0,
+      times: ["17:00", "12:00"],
+      schedule_updated_at: "2026-09-16T08:35:00Z",
+    },
+  },
+};
+const emptyState = { version: 1, parts: { dispatched: [] } };
+const due = duePartsSlots(scheduleConfig, emptyState, new Date("2026-09-16T09:03:00Z"));
+assert.deepEqual(due.map((item) => item.scheduledFor), ["2026-09-16T17:00:00+08:00"]);
+assert.deepEqual(
+  duePartsSlots(scheduleConfig, { version: 1, parts: { dispatched: ["2026-09-16T17:00:00+08:00"] } }, new Date("2026-09-16T09:03:00Z")),
+  [],
+);
+assert.deepEqual(
+  duePartsSlots({ ...scheduleConfig, tasks: { ...scheduleConfig.tasks, parts: { ...scheduleConfig.tasks.parts, enabled: false } } }, emptyState, new Date("2026-09-16T09:03:00Z")),
+  [],
+);
+assert.deepEqual(
+  duePartsSlots({ ...scheduleConfig, tasks: { ...scheduleConfig.tasks, parts: { ...scheduleConfig.tasks.parts, schedule_updated_at: "2026-09-16T09:01:00Z" } } }, emptyState, new Date("2026-09-16T09:03:00Z")),
+  [],
+);
+
+// 真正的后台 tick：读取控制台配置 -> workflow_dispatch -> 写入去重状态。
+const schedulerCalls = [];
+global.fetch = async (url, init = {}) => {
+  const text = String(url);
+  schedulerCalls.push({ url: text, init });
+  if (text.includes(`/repos/zx18522296069-commits/shengchan-control-panel/contents/backend/config.json`)) {
+    return Response.json({ content: encoded(scheduleConfig), sha: "config-sha" });
+  }
+  if (text.includes(`/repos/zx18522296069-commits/shengchan-control-panel/contents/backend/scheduler_state.json`) && (!init.method || init.method === "GET")) {
+    return Response.json({ content: encoded(emptyState), sha: "state-sha" });
+  }
+  if (text.includes(`/repos/zx18522296069-commits/weijiagong-lingjian-guidang/actions/workflows/update_parts.yml/dispatches`)) {
+    return new Response(null, { status: 204 });
+  }
+  if (text.includes(`/repos/zx18522296069-commits/shengchan-control-panel/contents/backend/scheduler_state.json`) && init.method === "PUT") {
+    return Response.json({ commit: { sha: "state-commit" } });
+  }
+  throw new Error(`unexpected scheduler request: ${text}`);
+};
+const tick = await runSchedulerTick(env, new Date("2026-09-16T09:03:00Z"));
+assert.deepEqual(tick.dispatched, ["2026-09-16T17:00:00+08:00"]);
+const scheduledDispatch = schedulerCalls.find((item) => item.url.includes("weijiagong-lingjian-guidang/actions/workflows/update_parts.yml/dispatches"));
+assert.ok(scheduledDispatch);
+assert.deepEqual(JSON.parse(scheduledDispatch.init.body).inputs, {
+  mode: "production",
+  trigger_source: "control-panel-scheduler",
+  scheduled_for: "2026-09-16T17:00:00+08:00",
+});
+assert.ok(schedulerCalls.some((item) => item.url.includes("backend/scheduler_state.json") && item.init.method === "PUT"));
+
+// 保存前端未加工时间只能更新控制台 config，禁止再写 update_parts.yml 的 schedule。
+const previousConfig = {
+  timezone: "Asia/Shanghai",
+  tasks: {
+    split: { enabled: false, schedule_mode: "daily", minute: 0, times: [] },
+    parts: { enabled: true, schedule_mode: "daily", minute: 0, times: ["17:00", "12:00"], schedule_updated_at: "2026-09-16T08:35:00Z" },
+  },
+};
+const nextConfig = {
+  timezone: "Asia/Shanghai",
+  tasks: {
+    split: { enabled: false, schedule_mode: "daily", minute: 0, times: [] },
+    parts: { enabled: true, schedule_mode: "daily", minute: 0, times: ["18:00", "12:30"] },
+  },
+};
+const saveCalls = [];
+global.fetch = async (url, init = {}) => {
+  const text = String(url);
+  saveCalls.push({ url: text, init });
+  if (text.includes(`/repos/zx18522296069-commits/shengchan-control-panel/contents/backend/config.json`) && (!init.method || init.method === "GET")) {
+    return Response.json({ content: encoded(previousConfig), sha: "config-sha" });
+  }
+  if (text.includes(`/repos/zx18522296069-commits/tuzhichaifen/contents/.github/workflows/split_drawing.yml`)) {
+    return Response.json({ content: encoded("name: split\non:\n  workflow_dispatch:\n"), sha: "split-sha" });
+  }
+  if (text.includes(`/repos/zx18522296069-commits/shengchan-control-panel/contents/backend/config.json`) && init.method === "PUT") {
+    return Response.json({ commit: { sha: "config-commit" } });
+  }
+  throw new Error(`unexpected save request: ${text}`);
+};
+const savedResponse = await worker.fetch(request("/api/config", { method: "POST", body: JSON.stringify(nextConfig) }), env);
+assert.equal(savedResponse.status, 200);
+const savedPayload = await savedResponse.json();
+assert.equal(savedPayload.commits.parts, "control-panel-scheduler");
+assert.ok(saveCalls.some((item) => item.url.includes("shengchan-control-panel/contents/backend/config.json") && item.init.method === "PUT"));
+assert.ok(!saveCalls.some((item) => item.url.includes("weijiagong-lingjian-guidang/contents/.github/workflows/update_parts.yml")));
+
 global.fetch = originalFetch;
-console.log("Worker route, authentication, dispatch, incremental parts status, PDF parsing, and status tests passed");
+console.log("Worker routes, dispatch, incremental status, PDF parsing, control-panel scheduling, and dedup tests passed");
