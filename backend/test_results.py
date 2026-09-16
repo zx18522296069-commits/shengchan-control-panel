@@ -27,6 +27,7 @@ class SplitResultTests(unittest.TestCase):
             result = results.get_result("split")
 
         self.assertEqual(result["completion"]["total"], 1)
+        self.assertEqual(result["completion"]["unit"], "个图纸文件")
         self.assertEqual(len(result["issues"]), 1)
         issue = result["issues"][0]
         self.assertEqual(issue["title"], "#2260")
@@ -34,6 +35,27 @@ class SplitResultTests(unittest.TestCase):
         self.assertIn("图号", issue["cause"])
         self.assertIn("钢板重量", issue["action"])
 
+    def test_pdf_native_text_log_uses_drawing_file_unit_and_clean_board_id(self):
+        log = (
+            "2026-09-16 14:55:00,100 INFO 扫描到 2 个未完成图纸文件（图片/PDF）\n"
+            "2026-09-16 14:55:05,100 INFO PDF 原生文本解析成功：#2330 T30退0.pdf（未使用 OCR）\n"
+            "2026-09-16 14:55:10,100 INFO 处理完成：#2330 T30退0.pdf -> #2330_完成.xlsx\n"
+            "2026-09-16 14:55:12,100 ERROR 处理失败｜阶段=PDF 内容提取失败｜文件=#2331 T40.pdf；"
+            "PDF 原生文本提取未通过：未能识别图片标注钢板重量；OCR 回退也未通过：未能识别图片标注钢板重量｜"
+            "处理建议=确认 PDF 由 FastNEST/FastCAM 正常导出。"
+        )
+        status = {"status": "failure", "run_number": 44, "html_url": "https://example.test/run/44"}
+        with (
+            patch.object(results, "get_workflow_status", return_value=status),
+            patch.object(results, "_latest_run", return_value={"id": 44}),
+            patch.object(results, "_job_log", return_value=log),
+        ):
+            result = results.get_result("split")
+
+        self.assertEqual(result["completion"], {"percent": 50, "completed": 1, "total": 2, "unit": "个图纸文件"})
+        self.assertEqual(result["successes"][0]["title"], "#2330")
+        self.assertEqual(result["issues"][0]["title"], "#2331")
+        self.assertIn("PDF 内容提取失败", result["issues"][0]["cause"])
 
     def test_parts_result_uses_board_filename_not_order_name(self):
         log = (
