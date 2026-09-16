@@ -2,6 +2,12 @@ const API_VERSION = "2022-11-28";
 const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
+const SCHEDULER_STATE_PATH = "backend/scheduler_state.json";
+const SCHEDULER_AUDIENCE = "production-control-scheduler";
+const SCHEDULER_WORKFLOW = `${CONTROL_REPO}/.github/workflows/scheduler-heartbeat.yml@refs/heads/main`;
+const SHANGHAI_OFFSET = "+08:00";
+const SCHEDULER_LOOKBACK_MS = 60 * 60 * 1000;
+
 const RESULT_LINKS = {
   split: [{ label: "打开拆图结果文件夹", url: "https://drive.google.com/drive/folders/1lr9AUd9hO81Ylbkt4iJf88og4aazC797" }],
   parts: [
@@ -20,16 +26,16 @@ const TASKS = {
   parts: {
     repo: "zx18522296069-commits/weijiagong-lingjian-guidang",
     workflow: "update_parts.yml",
-    workflowPath: ".github/workflows/update_parts.yml",
-    inputs: { mode: "production" },
+    inputs: { mode: "production", trigger_source: "control-panel-manual", scheduled_for: "" },
   },
 };
 
+// 配置文件读取失败时必须默认“不自动运行”，禁止在代码里保留任何业务固定时间。
 const DEFAULT_CONFIG = {
   timezone: "Asia/Shanghai",
   tasks: {
-    split: { enabled: true, schedule_mode: "hourly", minute: 0, times: ["22:00"] },
-    parts: { enabled: true, schedule_mode: "daily", minute: 0, times: ["17:25", "22:00"] },
+    split: { enabled: false, schedule_mode: "daily", minute: 0, times: [] },
+    parts: { enabled: false, schedule_mode: "daily", minute: 0, times: [], schedule_updated_at: null },
   },
 };
 
@@ -133,14 +139,15 @@ async function githubText(env, path) {
   return bytes.length >= 4 && new DataView(body).getUint32(0, true) === 0x04034b50 ? zipEntryText(body) : new TextDecoder().decode(bytes);
 }
 
-async function dispatch(env, task) {
+async function dispatch(env, task, inputOverrides = {}) {
   const target = TASKS[task];
+  const inputs = { ...target.inputs, ...inputOverrides };
   await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/dispatches`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ref: "main", inputs: target.inputs }),
+    body: JSON.stringify({ ref: "main", inputs }),
   });
-  return { status: "requested", workflow: target.workflow };
+  return { status: "requested", workflow: target.workflow, inputs };
 }
 
 async function latestWorkflowRun(env, task) {
@@ -369,7 +376,7 @@ function parseSplitResult(log, latest) {
 async function workflowResult(env, task) {
   const target = TASKS[task];
   const latest = await latestWorkflowRun(env, task);
-  if (!latest) return { task, status: "no_runs", completion: { percent: 0, completed: 0, total: 0, unit: task === "split" ? "个图纸文件" : "个订单" }, summary: [], successes: [], issues: [], warnings: [], links: RESULT_LINKS[task] };
+  if (!latest) return { task, status: "no_runs", completion: { percent: 0, completed: 0, total: 0, unit: task === "split" ? "个图纸文件" : "张板材" }, summary: [], successes: [], issues: [], warnings: [], links: RESULT_LINKS[task] };
   const payload = await github(env, `/repos/${target.repo}/actions/runs/${latest.id}/jobs?per_page=100`);
   const job = payload.jobs?.find((item) => item.name === (task === "split" ? "split" : "update")) || payload.jobs?.[0];
   if (!job) throw new Error("本次运行没有可读取的任务记录");
@@ -396,10 +403,12 @@ async function getFile(env, repo, path) {
 }
 
 async function putFile(env, repo, path, content, sha, message) {
+  const body = { message, content: encodeBase64(content), branch: "main" };
+  if (sha) body.sha = sha;
   const payload = await github(env, `/repos/${repo}/contents/${path}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message, content: encodeBase64(content), sha, branch: "main" }),
+    body: JSON.stringify(body),
   });
   return payload.commit.sha;
 }
@@ -408,27 +417,33 @@ function validateConfig(config) {
   const tasks = config?.tasks;
   const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
   if (!tasks?.split || !tasks?.parts) throw new Error("任务设置不完整");
+
   const splitMode = tasks.split.schedule_mode || "daily";
   if (!["hourly", "daily"].includes(splitMode)) throw new Error("拆图执行频率无效");
   const splitTimes = Array.isArray(tasks.split.times) ? tasks.split.times.slice(0, 1) : [];
-  if (splitMode === "daily" && (splitTimes.length !== 1 || !splitTimes.every((v) => timePattern.test(v)))) throw new Error("拆图执行时间无效");
+  if (splitTimes.some((value) => !timePattern.test(value))) throw new Error("拆图执行时间无效");
+  if (tasks.split.enabled && splitMode === "daily" && splitTimes.length !== 1) throw new Error("拆图执行时间无效");
+
   const partsTimes = Array.isArray(tasks.parts.times) ? tasks.parts.times.slice(0, 2) : [];
-  if (partsTimes.length !== 2 || !partsTimes.every((v) => timePattern.test(v))) throw new Error("未加工执行时间无效");
+  if (partsTimes.some((value) => !timePattern.test(value))) throw new Error("未加工执行时间无效");
+  if (tasks.parts.enabled && partsTimes.length !== 2) throw new Error("未加工执行时间无效");
+
   return {
     timezone: "Asia/Shanghai",
     tasks: {
-      split: { enabled: Boolean(tasks.split.enabled), schedule_mode: splitMode, minute: 0, times: splitTimes },
-      parts: { enabled: Boolean(tasks.parts.enabled), schedule_mode: "daily", minute: 0, times: partsTimes },
+      split: { enabled: Boolean(tasks.split.enabled), schedule_mode: splitMode, minute: Number(tasks.split.minute || 0), times: splitTimes },
+      parts: { enabled: Boolean(tasks.parts.enabled), schedule_mode: "daily", minute: 0, times: partsTimes, schedule_updated_at: tasks.parts.schedule_updated_at || null },
     },
   };
 }
 
+// 拆图当前仍沿用原有控制台写 schedule 机制；未加工不再经过这里。
 function toUtcCron(value) {
   const [hour, minute] = value.split(":").map(Number);
   return `${minute} ${(hour - 8 + 24) % 24} * * *`;
 }
 
-function crons(task) {
+function splitCrons(task) {
   if (task.schedule_mode === "hourly") return [`${Number(task.minute || 0)} * * * *`];
   return task.times.map(toUtcCron);
 }
@@ -445,25 +460,189 @@ function replaceSchedule(workflow, values, enabled) {
 async function getConfig(env) {
   try {
     const file = await getFile(env, CONTROL_REPO, CONFIG_PATH);
-    return JSON.parse(file.content);
+    return validateConfig(JSON.parse(file.content));
   } catch {
-    return DEFAULT_CONFIG;
+    return structuredClone(DEFAULT_CONFIG);
   }
 }
 
+function partsScheduleSignature(task) {
+  return JSON.stringify({ enabled: Boolean(task?.enabled), times: Array.isArray(task?.times) ? task.times : [] });
+}
+
 async function saveConfig(env, payload) {
+  const previous = await getConfig(env);
   const config = validateConfig(payload);
   const commits = {};
-  for (const key of ["split", "parts"]) {
-    const target = TASKS[key];
-    const file = await getFile(env, target.repo, target.workflowPath);
-    const updated = replaceSchedule(file.content, crons(config.tasks[key]), config.tasks[key].enabled);
-    commits[key] = updated === file.content ? "unchanged" : await putFile(env, target.repo, target.workflowPath, updated, file.sha, `通过控制台更新${key}定时设置`);
-  }
+
+  // 拆图保持当前既有实现；未加工从此不再改写目标 workflow 的 schedule。
+  const splitTarget = TASKS.split;
+  const splitWorkflow = await getFile(env, splitTarget.repo, splitTarget.workflowPath);
+  const updatedSplitWorkflow = replaceSchedule(splitWorkflow.content, splitCrons(config.tasks.split), config.tasks.split.enabled);
+  commits.split = updatedSplitWorkflow === splitWorkflow.content
+    ? "unchanged"
+    : await putFile(env, splitTarget.repo, splitTarget.workflowPath, updatedSplitWorkflow, splitWorkflow.sha, "通过控制台更新split定时设置");
+
+  const partsChanged = partsScheduleSignature(previous.tasks.parts) !== partsScheduleSignature(config.tasks.parts);
+  config.tasks.parts.schedule_updated_at = partsChanged
+    ? new Date().toISOString()
+    : (previous.tasks.parts.schedule_updated_at || new Date().toISOString());
+  commits.parts = "control-panel-scheduler";
+
   const current = await getFile(env, CONTROL_REPO, CONFIG_PATH);
   const serialized = `${JSON.stringify(config, null, 2)}\n`;
-  commits.config = current.content === serialized ? "unchanged" : await putFile(env, CONTROL_REPO, CONFIG_PATH, serialized, current.sha, "保存生产控制台定时设置");
+  commits.config = current.content === serialized
+    ? "unchanged"
+    : await putFile(env, CONTROL_REPO, CONFIG_PATH, serialized, current.sha, "保存生产控制台定时设置");
   return { status: "success", config, commits };
+}
+
+function base64UrlBytes(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function decodeJwtPart(value) {
+  return JSON.parse(new TextDecoder().decode(base64UrlBytes(value)));
+}
+
+async function verifySchedulerIdentity(request) {
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) throw Object.assign(new Error("调度器缺少 GitHub OIDC 身份"), { status: 401 });
+  const segments = token.split(".");
+  if (segments.length !== 3) throw Object.assign(new Error("调度器 OIDC 格式无效"), { status: 401 });
+
+  const header = decodeJwtPart(segments[0]);
+  const claims = decodeJwtPart(segments[1]);
+  const now = Math.floor(Date.now() / 1000);
+  if (claims.iss !== "https://token.actions.githubusercontent.com") throw Object.assign(new Error("调度器 OIDC 签发方无效"), { status: 403 });
+  const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!audiences.includes(SCHEDULER_AUDIENCE)) throw Object.assign(new Error("调度器 OIDC audience 无效"), { status: 403 });
+  if (!claims.exp || claims.exp < now || (claims.nbf && claims.nbf > now + 30)) throw Object.assign(new Error("调度器 OIDC 已过期或尚未生效"), { status: 403 });
+  if (claims.repository !== CONTROL_REPO || claims.ref !== "refs/heads/main" || claims.event_name !== "schedule") {
+    throw Object.assign(new Error("调度器 OIDC 来源仓库或事件无效"), { status: 403 });
+  }
+  if (claims.workflow_ref && claims.workflow_ref !== SCHEDULER_WORKFLOW) {
+    throw Object.assign(new Error("调度器 OIDC workflow 无效"), { status: 403 });
+  }
+
+  const jwksResponse = await fetch("https://token.actions.githubusercontent.com/.well-known/jwks");
+  if (!jwksResponse.ok) throw new Error("GitHub OIDC 公钥读取失败");
+  const jwks = await jwksResponse.json();
+  const jwk = jwks.keys?.find((item) => item.kid === header.kid);
+  if (!jwk) throw Object.assign(new Error("GitHub OIDC 公钥不匹配"), { status: 403 });
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const data = new TextEncoder().encode(`${segments[0]}.${segments[1]}`);
+  const signature = base64UrlBytes(segments[2]);
+  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
+  if (!valid) throw Object.assign(new Error("调度器 OIDC 签名无效"), { status: 403 });
+  return claims;
+}
+
+function shanghaiDateString(date) {
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]),
+  );
+  return { date: `${values.year}-${values.month}-${values.day}`, time: `${values.hour}:${values.minute}` };
+}
+
+function previousShanghaiDate(dateString) {
+  const midnight = new Date(`${dateString}T00:00:00${SHANGHAI_OFFSET}`);
+  return shanghaiDateString(new Date(midnight.getTime() - 24 * 60 * 60 * 1000)).date;
+}
+
+function duePartsSlots(config, state, now = new Date()) {
+  const task = config?.tasks?.parts;
+  if (!task?.enabled || !Array.isArray(task.times) || !task.times.length) return [];
+  const local = shanghaiDateString(now);
+  const dates = [local.date, previousShanghaiDate(local.date)];
+  const already = new Set(state?.parts?.dispatched || []);
+  const updatedAt = task.schedule_updated_at ? Date.parse(task.schedule_updated_at) : 0;
+  const nowMs = now.getTime();
+  const due = [];
+
+  for (const date of dates) {
+    for (const time of task.times) {
+      const scheduledFor = `${date}T${time}:00${SHANGHAI_OFFSET}`;
+      const scheduledMs = Date.parse(scheduledFor);
+      if (!Number.isFinite(scheduledMs)) continue;
+      const age = nowMs - scheduledMs;
+      if (age < 0 || age > SCHEDULER_LOOKBACK_MS) continue;
+      if (updatedAt && scheduledMs < updatedAt) continue;
+      if (already.has(scheduledFor)) continue;
+      due.push({ scheduledFor, scheduledMs });
+    }
+  }
+  return due.sort((a, b) => a.scheduledMs - b.scheduledMs);
+}
+
+async function getSchedulerState(env) {
+  try {
+    const file = await getFile(env, CONTROL_REPO, SCHEDULER_STATE_PATH);
+    const parsed = JSON.parse(file.content);
+    return { state: { version: 1, parts: { dispatched: parsed?.parts?.dispatched || [] } }, sha: file.sha };
+  } catch (error) {
+    if (error.status === 404) return { state: { version: 1, parts: { dispatched: [] } }, sha: null };
+    throw error;
+  }
+}
+
+async function saveSchedulerState(env, state, sha) {
+  const serialized = `${JSON.stringify(state, null, 2)}\n`;
+  return putFile(env, CONTROL_REPO, SCHEDULER_STATE_PATH, serialized, sha, "记录生产控制台调度去重状态");
+}
+
+function pruneSchedulerState(state, now = new Date()) {
+  const cutoff = now.getTime() - 3 * 24 * 60 * 60 * 1000;
+  state.parts.dispatched = (state.parts.dispatched || []).filter((value) => {
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) && timestamp >= cutoff;
+  });
+  return state;
+}
+
+async function runSchedulerTick(env, now = new Date()) {
+  const config = await getConfig(env);
+  const { state, sha } = await getSchedulerState(env);
+  pruneSchedulerState(state, now);
+  const due = duePartsSlots(config, state, now);
+  const dispatched = [];
+
+  for (const slot of due) {
+    await dispatch(env, "parts", {
+      mode: "production",
+      trigger_source: "control-panel-scheduler",
+      scheduled_for: slot.scheduledFor,
+    });
+    state.parts.dispatched.push(slot.scheduledFor);
+    dispatched.push(slot.scheduledFor);
+  }
+
+  if (dispatched.length) await saveSchedulerState(env, state, sha);
+  return {
+    status: "success",
+    checked_at: now.toISOString(),
+    timezone: "Asia/Shanghai",
+    due: due.map((item) => item.scheduledFor),
+    dispatched,
+  };
 }
 
 async function handle(request, env) {
@@ -472,11 +651,25 @@ async function handle(request, env) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (origin && origin !== ALLOWED_ORIGIN) return json({ detail: "来源不允许" }, 403, origin);
   if (url.pathname === "/" && request.method === "GET") return json({ status: "ok", service: "production-control-api" }, 200, origin);
+
+  // 调度心跳使用 GitHub OIDC，不使用浏览器控制口令。
+  if (url.pathname === "/api/scheduler/tick" && request.method === "POST") {
+    try {
+      await verifySchedulerIdentity(request);
+      return json(await runSchedulerTick(env), 200, origin);
+    } catch (error) {
+      const status = [401, 403, 404, 422].includes(error.status) ? error.status : 502;
+      return json({ detail: error.message || "后台调度异常" }, status, origin);
+    }
+  }
+
   if (!env.CONTROL_PANEL_KEY) return json({ detail: "CONTROL_PANEL_KEY 未配置" }, 503, origin);
   if (!await sameSecret(request.headers.get("x-control-key") || "", env.CONTROL_PANEL_KEY)) return json({ detail: "控制台口令不正确" }, 401, origin);
   try {
     if (url.pathname === "/api/run/split" && request.method === "POST") return json(await dispatch(env, "split"), 200, origin);
-    if (url.pathname === "/api/run/parts" && request.method === "POST") return json(await dispatch(env, "parts"), 200, origin);
+    if (url.pathname === "/api/run/parts" && request.method === "POST") {
+      return json(await dispatch(env, "parts", { trigger_source: "control-panel-manual", scheduled_for: "" }), 200, origin);
+    }
     if (url.pathname === "/api/status" && request.method === "GET") {
       const [split, parts] = await Promise.all([workflowStatus(env, "split"), workflowStatus(env, "parts")]);
       return json({ split, parts }, 200, origin);
@@ -499,4 +692,5 @@ async function handle(request, env) {
   }
 }
 
+export { duePartsSlots, runSchedulerTick, validateConfig };
 export default { fetch(request, env) { return handle(request, env); } };
