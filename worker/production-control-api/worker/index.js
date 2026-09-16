@@ -198,16 +198,6 @@ function uniqueItems(items) {
   });
 }
 
-// 前端所有拆图结果都以待拆文件开头的板材编号为入口。
-// “#2323 … (1)”中的 (1) 是同板号小序号，须保留；厚度、余料等
-// 文件名后缀不是板材编号，不能显示在结果标题中。
-function splitBoardId(filename) {
-  const stem = String(filename || "")
-    .replace(/^完成_/, "")
-    .replace(/\.[^.]+$/, "");
-  return stem.match(/#\d+(?:\s*\(\d+\))?/)?.[0] || stem.split(/\s+/)[0] || stem;
-}
-
 function fatalIssue(lines) {
   const candidates = lines
     .map((line) => line.match(/(?:ValueError|RuntimeError|FileNotFoundError):\s*(.+)$/)?.[1])
@@ -224,7 +214,13 @@ function parsePartsResult(log, latest) {
   const warnings = [];
 
   for (const line of lines) {
-    let match = line.match(/^读取订单源\s+(.+?)：\s*(\d+)\s+条零件$/);
+    let match = line.match(/^板材处理结果｜文件=([^｜]+)｜板材=([^｜]+)｜状态=([^｜]+)｜原因=([^｜]+)｜处理建议=(.+)$/);
+    if (match) {
+      const [, filename, board, record_status, cause, action] = match;
+      issues.push({ title: `${board}（${filename}）`, record_status, cause, action, reason: cause });
+      continue;
+    }
+    match = line.match(/^读取订单源\s+(.+?)：\s*(\d+)\s+条零件$/);
     if (match) successes.push({ title: match[1], detail: `读取 ${match[2]} 条零件` });
     match = line.match(/^订单源未完成\s+(.+?):\s*(.+)$/);
     if (match) issues.push({ title: match[1], reason: match[2] });
@@ -247,8 +243,9 @@ function parsePartsResult(log, latest) {
     issues.push({ title: "任务中断", reason: fatal });
   }
 
-  const completed = Math.min(successes.length, total || successes.length);
-  const percent = total ? Math.round((completed / total) * 100) : (latest.conclusion === "success" ? 100 : 0);
+  const boardTotal = acceptedBoards.length + issues.filter((item) => item.title.startsWith("#") || item.title.startsWith("板材 #")).length;
+  const completed = boardTotal ? acceptedBoards.length : Math.min(successes.length, total || successes.length);
+  const percent = boardTotal ? Math.round((completed / boardTotal) * 100) : (total ? Math.round((completed / total) * 100) : (latest.conclusion === "success" ? 100 : 0));
   const remaining = lines.map((line) => line.match(/生成后活动订单当前剩余件数\s+(-?\d+)/)?.[1]).filter(Boolean).at(-1);
   const weight = lines.map((line) => line.match(/生成后活动订单当前未出重量\s+([\d.]+)\s+t/)?.[1]).filter(Boolean).at(-1);
   const summary = [];
@@ -258,9 +255,9 @@ function parsePartsResult(log, latest) {
 
   return {
     status: issues.length ? (completed ? "partial" : "failure") : (latest.conclusion || "unknown"),
-    completion: { percent, completed, total: total || completed, unit: "个订单" },
+    completion: { percent, completed, total: boardTotal || total || completed, unit: boardTotal ? "张板材" : "个订单" },
     summary,
-    successes: uniqueItems([...acceptedBoards, ...successes]),
+    successes: uniqueItems(acceptedBoards),
     issues: uniqueItems(issues),
     warnings: uniqueItems(warnings),
   };
@@ -268,7 +265,7 @@ function parsePartsResult(log, latest) {
 
 function parseSplitResult(log, latest) {
   const lines = log.split(/\r?\n/).map(cleanLogLine);
-  const total = Number(lines.map((line) => line.match(/扫描到\s+(\d+)\s+张未完成(?:图片|图片\/PDF)/)?.[1]).filter(Boolean).at(-1) || 0);
+  const total = Number(lines.map((line) => line.match(/扫描到\s+(\d+)\s+张未完成图片/)?.[1]).filter(Boolean).at(-1) || 0);
   const successes = [];
   const issues = [];
   const warnings = [];
@@ -279,7 +276,7 @@ function parseSplitResult(log, latest) {
     match = line.match(/^处理失败｜阶段=([^｜]+)｜文件=([^；]+)；([^｜]+)｜处理建议=(.+)$/);
     if (match) {
       const [, stage, filename, cause, action] = match;
-      const boardId = splitBoardId(filename);
+      const boardId = filename.replace(/^完成_/, "").replace(/\.[^.]+$/, "");
       issues.push({
         title: boardId,
         record_status: "未拆出",
@@ -288,11 +285,8 @@ function parseSplitResult(log, latest) {
         reason: `${stage}：${cause}｜下一步：${action}`,
       });
     }
-    match = line.match(/^(?:处理|验证)(?:成功|完成)[：:]\s*(.+?)(?:\s*->\s*(.+))?$/);
-    if (match) successes.push({
-      title: splitBoardId(match[1]),
-      detail: match[2] ? `已生成 ${match[2]}` : "已生成拆图结果",
-    });
+    match = line.match(/^处理(?:成功|完成)：(.+?)(?:：(.+))?$/);
+    if (match) successes.push({ title: match[1], detail: match[2] || "已生成拆图结果" });
     match = line.match(/^跳过不可读基础表：(.+?)：(.+)$/);
     if (match) warnings.push({ title: match[1], reason: match[2] });
   }
