@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
+import SplitResults, { normalizeSplitResults } from './SplitResults';
 
 const TASKS = {
   split: { label: '拆图', description: '扫描待拆图纸（PDF/图片）并生成拆图结果' },
@@ -166,12 +167,22 @@ function ResultPanel({ task, result, loading, error, onClose }) {
   const completion = result?.completion || defaultCompletion;
   const resultState = taskState(result);
   const partsBoards = task === 'parts' ? normalizePartsBoards(result) : null;
+  const splitRows = task === 'split' ? normalizeSplitResults(result) : null;
+  const splitCompleted = splitRows
+    ? (splitRows.finished
+      ? splitRows.total
+      : Math.min(splitRows.total, splitRows.successCount + splitRows.failed.length + splitRows.skipped.length))
+    : 0;
   const shownCompletion = task === 'parts'
     ? { percent: partsBoards.percent, completed: partsBoards.classified, total: partsBoards.total, unit: '张板材' }
-    : completion;
+    : task === 'split'
+      ? { percent: splitRows.percent, completed: splitCompleted, total: splitRows.total, unit: '个图纸文件' }
+      : completion;
   const shownState = task === 'parts' && partsBoards.finished
     ? { tone: 'success', text: '执行完成' }
-    : resultState;
+    : task === 'split' && splitRows.finished
+      ? { tone: 'success', text: '执行完成' }
+      : resultState;
   const boardRows = result?.issues || [];
 
   return (
@@ -189,7 +200,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
           <>
             <div className="result-overview">
               <div className="completion-ring" style={{ '--progress': `${shownCompletion.percent}%` }}>
-                <strong>{shownCompletion.percent}%</strong><span>{task === 'parts' ? '扫描完成度' : '完成度'}</span>
+                <strong>{shownCompletion.percent}%</strong><span>{task === 'parts' || task === 'split' ? '扫描完成度' : '完成度'}</span>
               </div>
               <div className="completion-copy">
                 <span className={`badge ${shownState.tone}`}><span className="status-dot" />{shownState.text}</span>
@@ -197,6 +208,11 @@ function ResultPanel({ task, result, loading, error, onClose }) {
                   <>
                     <h3>本次扫描 {partsBoards.total} 张板材</h3>
                     <p>成功录入 {partsBoards.success.length} 张｜重复已处理 {partsBoards.duplicate.length} 张｜未成功 {partsBoards.failed.length} 张</p>
+                  </>
+                ) : task === 'split' ? (
+                  <>
+                    <h3>本次扫描 {splitRows.total} 个图纸文件</h3>
+                    <p>成功拆出 {splitRows.successCount} 个｜未拆出 {splitRows.failed.length} 个｜已跳过 {splitRows.skipped.length} 个</p>
                   </>
                 ) : (
                   <>
@@ -209,7 +225,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
 
             <div className="progress-track" aria-label={`完成度 ${shownCompletion.percent}%`}><span style={{ width: `${shownCompletion.percent}%` }} /></div>
 
-            {task === 'parts' ? <PartsResults result={result} /> : (
+            {task === 'parts' ? <PartsResults result={result} /> : task === 'split' ? <SplitResults result={result} /> : (
               <section className="result-block issues-block">
                 <div className="result-block-title"><h3>未拆出板材</h3><span>{boardRows.length}</span></div>
                 {boardRows.length ? (
@@ -233,7 +249,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
               </section>
             )}
 
-            {result.warnings?.length > 0 && (
+            {task !== 'split' && result.warnings?.length > 0 && (
               <section className="result-block warning-block">
                 <div className="result-block-title"><h3>{task === 'parts' ? '订单源 / 资料异常' : '已跳过资料'}</h3><span>{result.warnings.length}</span></div>
                 <ul className="result-list">
@@ -242,7 +258,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
               </section>
             )}
 
-            {task !== 'parts' && result.successes?.length > 0 && (
+            {task === 'draw' && result.successes?.length > 0 && (
               <details className="success-details">
                 <summary>查看已完成项目（{result.successes.length}）</summary>
                 <ul className="result-list">
