@@ -41,9 +41,12 @@ function isBoardResultItem(item, source) {
 }
 
 function classifyBoardItem(item, inferredKind = '') {
-  const text = `${item?.record_status || ''} ${item?.cause || ''} ${item?.reason || ''} ${item?.detail || ''}`;
-  if (/内容冲突|内容不同|无法唯一一致复核/.test(text)) return 'failed';
-  if (/仅补归档|补归档|未重复累计|重复内容|历史已入账/.test(text)) return 'duplicate';
+  const status = String(item?.record_status || '');
+  const text = `${status} ${item?.cause || ''} ${item?.reason || ''} ${item?.detail || ''}`;
+  // 失败优先级最高。历史已经入账并不代表当前根目录文件就是可安全补归档的重复件。
+  if (/未累计|未记录|阻断/.test(status)
+    || /内容冲突|内容不同|无法(?:安全|唯一)?(?:一致)?复核|本次无法复核|不归档/.test(text)) return 'failed';
+  if (/仅补归档|补归档|未重复累计|重复内容/.test(text)) return 'duplicate';
   if (/已累计、已录入|首次校验通过|成功计入|已写回累计台账/.test(text)) return 'success';
   if (inferredKind === 'success') return 'success';
   return 'failed';
@@ -87,11 +90,14 @@ function normalizePartsBoards(result) {
   const duplicate = all.filter((item) => item.kind === 'duplicate');
   const failed = all.filter((item) => item.kind === 'failed');
   const classified = success.length + duplicate.length + failed.length;
-  const reportedTotal = Number(result?.completion?.total || 0);
-  const total = Math.max(reportedTotal, classified);
-  const finished = ['success', 'partial'].includes(result?.status) && classified >= total;
+  // 板材总数只能来自逐板结果，禁止再次使用接口里的订单源 total。
+  const total = classified;
+  const executionEnded = ['success', 'partial', 'failure'].includes(result?.status);
+  const finished = total > 0
+    ? executionEnded && classified === total
+    : ['success', 'partial'].includes(result?.status);
   const percent = total > 0
-    ? Math.min(100, Math.round((classified / total) * 100))
+    ? 100
     : (['success', 'partial'].includes(result?.status) ? 100 : Number(result?.completion?.percent || 0));
 
   return { all, success, duplicate, failed, classified, total, percent, finished };
@@ -156,7 +162,7 @@ function PartsResults({ result }) {
 
 function ResultPanel({ task, result, loading, error, onClose }) {
   const meta = TASKS[task];
-  const defaultCompletion = { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '个订单' };
+  const defaultCompletion = { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '张板材' };
   const completion = result?.completion || defaultCompletion;
   const resultState = taskState(result);
   const partsBoards = task === 'parts' ? normalizePartsBoards(result) : null;
@@ -229,7 +235,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
 
             {result.warnings?.length > 0 && (
               <section className="result-block warning-block">
-                <div className="result-block-title"><h3>已跳过资料</h3><span>{result.warnings.length}</span></div>
+                <div className="result-block-title"><h3>{task === 'parts' ? '订单源 / 资料异常' : '已跳过资料'}</h3><span>{result.warnings.length}</span></div>
                 <ul className="result-list">
                   {result.warnings.map((item, index) => <li className="warning-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
                 </ul>
