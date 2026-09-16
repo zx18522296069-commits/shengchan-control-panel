@@ -1,0 +1,39 @@
+name: 控制台调度心跳
+
+on:
+  # 这是控制台基础设施心跳，不是业务执行时间。
+  # 未加工实际运行时间只读取 backend/config.json 中的前端配置。
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-control-scheduler-heartbeat
+  cancel-in-progress: true
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request GitHub OIDC identity and tick scheduler
+        env:
+          SCHEDULER_URL: 'https://production-control-api.zx18522296069.chatgpt.site/api/scheduler/tick'
+          OIDC_AUDIENCE: 'production-control-scheduler'
+        run: |
+          set -euo pipefail
+          TOKEN_JSON=$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}")
+          TOKEN=$(printf '%s' "$TOKEN_JSON" | jq -r '.value')
+          test -n "$TOKEN"
+          test "$TOKEN" != "null"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Content-Type: application/json' \
+            "$SCHEDULER_URL"
