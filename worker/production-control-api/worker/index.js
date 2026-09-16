@@ -3,9 +3,7 @@ const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
 const RESULT_LINKS = {
-  split: [
-    { label: "打开拆图结果文件夹", url: "https://drive.google.com/drive/folders/1lr9AUd9hO81Ylbkt4iJf88og4aazC797" },
-  ],
+  split: [{ label: "打开拆图结果文件夹", url: "https://drive.google.com/drive/folders/1lr9AUd9hO81Ylbkt4iJf88og4aazC797" }],
   parts: [
     { label: "累计加工台账", url: "https://drive.google.com/open?id=1BDXfJN8afgla9Z9Al-tVQmqP107afkPb" },
     { label: "当前待加工零件", url: "https://drive.google.com/open?id=1Lw91mzMQkqEx4sAn_U6JgHaDfa6bQpUG" },
@@ -96,15 +94,13 @@ async function zipEntryText(buffer) {
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
   const text = new TextDecoder();
-  for (let offset = 0; offset + 30 <= bytes.length; ) {
+  for (let offset = 0; offset + 30 <= bytes.length;) {
     if (view.getUint32(offset, true) !== 0x04034b50) break;
     const flags = view.getUint16(offset + 6, true);
     const method = view.getUint16(offset + 8, true);
     const compressedSize = view.getUint32(offset + 18, true);
     const nameLength = view.getUint16(offset + 26, true);
     const extraLength = view.getUint16(offset + 28, true);
-    // GitHub Action job logs are normal ZIP entries with known sizes.  Avoid
-    // accepting data-descriptor entries, which would make the archive ambiguous.
     if (flags & 0x08) throw new Error("GitHub 日志 ZIP 格式不受支持");
     const dataStart = offset + 30 + nameLength + extraLength;
     const dataEnd = dataStart + compressedSize;
@@ -121,10 +117,7 @@ async function zipEntryText(buffer) {
 }
 
 async function githubText(env, path) {
-  const response = await fetch(`https://api.github.com${path}`, {
-    headers: githubHeaders(env),
-    redirect: "manual",
-  });
+  const response = await fetch(`https://api.github.com${path}`, { headers: githubHeaders(env), redirect: "manual" });
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
     if (!location) throw new Error("GitHub 日志下载地址缺失");
@@ -132,16 +125,12 @@ async function githubText(env, path) {
     if (!redirected.ok) throw new Error(`GitHub 日志下载失败（${redirected.status}）`);
     const body = await redirected.arrayBuffer();
     const bytes = new Uint8Array(body);
-    return bytes.length >= 4 && new DataView(body).getUint32(0, true) === 0x04034b50
-      ? zipEntryText(body)
-      : new TextDecoder().decode(bytes);
+    return bytes.length >= 4 && new DataView(body).getUint32(0, true) === 0x04034b50 ? zipEntryText(body) : new TextDecoder().decode(bytes);
   }
   if (!response.ok) throw new Error(`GitHub 日志读取失败（${response.status}）`);
   const body = await response.arrayBuffer();
   const bytes = new Uint8Array(body);
-  return bytes.length >= 4 && new DataView(body).getUint32(0, true) === 0x04034b50
-    ? zipEntryText(body)
-    : new TextDecoder().decode(bytes);
+  return bytes.length >= 4 && new DataView(body).getUint32(0, true) === 0x04034b50 ? zipEntryText(body) : new TextDecoder().decode(bytes);
 }
 
 async function dispatch(env, task) {
@@ -156,10 +145,7 @@ async function dispatch(env, task) {
 
 async function latestWorkflowRun(env, task) {
   const target = TASKS[task];
-  const payload = await github(
-    env,
-    `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1`,
-  );
+  const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1`);
   return payload.workflow_runs?.[0] || null;
 }
 
@@ -199,10 +185,12 @@ function uniqueItems(items) {
 }
 
 function fatalIssue(lines) {
-  const candidates = lines
-    .map((line) => line.match(/(?:ValueError|RuntimeError|FileNotFoundError):\s*(.+)$/)?.[1])
-    .filter(Boolean);
-  return candidates.at(-1) || "";
+  return lines.map((line) => line.match(/(?:ValueError|RuntimeError|FileNotFoundError):\s*(.+)$/)?.[1]).filter(Boolean).at(-1) || "";
+}
+
+function splitBoardId(filename) {
+  const stem = filename.replace(/^完成_/, "").replace(/\.[^.]+$/, "").trim();
+  return stem.split(/\s+/)[0] || stem || filename;
 }
 
 function parsePartsResult(log, latest) {
@@ -212,7 +200,6 @@ function parsePartsResult(log, latest) {
   const issues = [];
   const acceptedBoards = [];
   const warnings = [];
-
   for (const line of lines) {
     let match = line.match(/^板材处理结果｜文件=([^｜]+)｜板材=([^｜]+)｜状态=([^｜]+)｜原因=([^｜]+)｜处理建议=(.+)$/);
     if (match) {
@@ -237,12 +224,8 @@ function parsePartsResult(log, latest) {
     match = line.match(/^板材\s+(.+?)\s+编号重复但内容不同：(.+)$/);
     if (match) warnings.push({ title: `同号板材 ${match[1]}`, reason: match[2] });
   }
-
   const fatal = fatalIssue(lines);
-  if (fatal && !issues.some((item) => fatal.includes(item.reason) || item.reason.includes(fatal))) {
-    issues.push({ title: "任务中断", reason: fatal });
-  }
-
+  if (fatal && !issues.some((item) => fatal.includes(item.reason) || item.reason.includes(fatal))) issues.push({ title: "任务中断", reason: fatal });
   const boardTotal = acceptedBoards.length + issues.filter((item) => item.title.startsWith("#") || item.title.startsWith("板材 #")).length;
   const completed = boardTotal ? acceptedBoards.length : Math.min(successes.length, total || successes.length);
   const percent = boardTotal ? Math.round((completed / boardTotal) * 100) : (total ? Math.round((completed / total) * 100) : (latest.conclusion === "success" ? 100 : 0));
@@ -252,7 +235,6 @@ function parsePartsResult(log, latest) {
   if (acceptedBoards.length) summary.push(`本次成功入账 ${acceptedBoards.length} 张板材`);
   if (remaining !== undefined) summary.push(`当前剩余 ${remaining} 件`);
   if (weight !== undefined) summary.push(`当前未出重量 ${weight} t`);
-
   return {
     status: issues.length ? (completed ? "partial" : "failure") : (latest.conclusion || "unknown"),
     completion: { percent, completed, total: boardTotal || total || completed, unit: boardTotal ? "张板材" : "个订单" },
@@ -265,42 +247,36 @@ function parsePartsResult(log, latest) {
 
 function parseSplitResult(log, latest) {
   const lines = log.split(/\r?\n/).map(cleanLogLine);
-  const total = Number(lines.map((line) => line.match(/扫描到\s+(\d+)\s+张未完成图片/)?.[1]).filter(Boolean).at(-1) || 0);
+  const total = Number(lines.map((line) => line.match(/扫描到\s+(\d+)\s+(?:个未完成图纸文件(?:（图片\/PDF）)?|张未完成图片(?:\/PDF)?)/)?.[1]).filter(Boolean).at(-1) || 0);
   const successes = [];
   const issues = [];
   const warnings = [];
-
   for (const line of lines) {
     let match = line.match(/^处理失败：(.+?)：(.+)$/);
     if (match) issues.push({ title: match[1], record_status: "未拆出", cause: match[2], action: "核对该板图纸和基础资料后重新执行。", reason: match[2] });
     match = line.match(/^处理失败｜阶段=([^｜]+)｜文件=([^；]+)；([^｜]+)｜处理建议=(.+)$/);
     if (match) {
       const [, stage, filename, cause, action] = match;
-      const boardId = filename.replace(/^完成_/, "").replace(/\.[^.]+$/, "");
       issues.push({
-        title: boardId,
+        title: splitBoardId(filename),
         record_status: "未拆出",
         cause: `${stage}：${cause}`,
         action,
         reason: `${stage}：${cause}｜下一步：${action}`,
       });
     }
-    match = line.match(/^处理(?:成功|完成)：(.+?)(?:：(.+))?$/);
-    if (match) successes.push({ title: match[1], detail: match[2] || "已生成拆图结果" });
+    match = line.match(/^(?:处理|验证)(?:成功|完成)[：:]\s*(.+?)\s*->\s*(.+)$/);
+    if (match) successes.push({ title: splitBoardId(match[1]), detail: `已生成 ${match[2].trim()}` });
     match = line.match(/^跳过不可读基础表：(.+?)：(.+)$/);
     if (match) warnings.push({ title: match[1], reason: match[2] });
   }
-
   const fatal = fatalIssue(lines);
-  // 运行级异常只在没有板材级失败信息时显示，避免把目录、模板或基础表
-  // 误当作未拆出的板材。
   if (fatal && !issues.length) issues.push({ title: "运行异常", record_status: "未拆出", cause: fatal, action: "打开 GitHub 运行日志核对后重新执行。", reason: fatal });
   const completed = Math.min(successes.length, total || successes.length);
   const percent = total ? Math.round((completed / total) * 100) : (latest.conclusion === "success" ? 100 : 0);
-
   return {
     status: issues.length ? (completed ? "partial" : "failure") : (latest.conclusion || "unknown"),
-    completion: { percent, completed, total: total || completed, unit: "张图片" },
+    completion: { percent, completed, total: total || completed, unit: "个图纸文件" },
     summary: warnings.length ? [`另有 ${warnings.length} 个基础表无法读取，已跳过`] : [],
     successes: uniqueItems(successes),
     issues: uniqueItems(issues),
@@ -311,22 +287,13 @@ function parseSplitResult(log, latest) {
 async function workflowResult(env, task) {
   const target = TASKS[task];
   const latest = await latestWorkflowRun(env, task);
-  if (!latest) return { task, status: "no_runs", completion: { percent: 0, completed: 0, total: 0, unit: task === "split" ? "张图片" : "个订单" }, summary: [], successes: [], issues: [], warnings: [], links: RESULT_LINKS[task] };
+  if (!latest) return { task, status: "no_runs", completion: { percent: 0, completed: 0, total: 0, unit: task === "split" ? "个图纸文件" : "个订单" }, summary: [], successes: [], issues: [], warnings: [], links: RESULT_LINKS[task] };
   const payload = await github(env, `/repos/${target.repo}/actions/runs/${latest.id}/jobs?per_page=100`);
   const job = payload.jobs?.find((item) => item.name === (task === "split" ? "split" : "update")) || payload.jobs?.[0];
   if (!job) throw new Error("本次运行没有可读取的任务记录");
   const log = await githubText(env, `/repos/${target.repo}/actions/jobs/${job.id}/logs`);
   const parsed = task === "split" ? parseSplitResult(log, latest) : parsePartsResult(log, latest);
-  return {
-    task,
-    run_id: latest.id,
-    run_number: latest.run_number,
-    event: latest.event,
-    updated_at: latest.updated_at,
-    html_url: latest.html_url,
-    ...parsed,
-    links: RESULT_LINKS[task],
-  };
+  return { task, run_id: latest.id, run_number: latest.run_number, event: latest.event, updated_at: latest.updated_at, html_url: latest.html_url, ...parsed, links: RESULT_LINKS[task] };
 }
 
 function decodeBase64(value) {
@@ -359,17 +326,12 @@ function validateConfig(config) {
   const tasks = config?.tasks;
   const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
   if (!tasks?.split || !tasks?.parts) throw new Error("任务设置不完整");
-
   const splitMode = tasks.split.schedule_mode || "daily";
   if (!["hourly", "daily"].includes(splitMode)) throw new Error("拆图执行频率无效");
   const splitTimes = Array.isArray(tasks.split.times) ? tasks.split.times.slice(0, 1) : [];
-  if (splitMode === "daily" && (splitTimes.length !== 1 || !splitTimes.every((v) => timePattern.test(v)))) {
-    throw new Error("拆图执行时间无效");
-  }
-
+  if (splitMode === "daily" && (splitTimes.length !== 1 || !splitTimes.every((v) => timePattern.test(v)))) throw new Error("拆图执行时间无效");
   const partsTimes = Array.isArray(tasks.parts.times) ? tasks.parts.times.slice(0, 2) : [];
   if (partsTimes.length !== 2 || !partsTimes.every((v) => timePattern.test(v))) throw new Error("未加工执行时间无效");
-
   return {
     timezone: "Asia/Shanghai",
     tasks: {
@@ -414,15 +376,11 @@ async function saveConfig(env, payload) {
     const target = TASKS[key];
     const file = await getFile(env, target.repo, target.workflowPath);
     const updated = replaceSchedule(file.content, crons(config.tasks[key]), config.tasks[key].enabled);
-    commits[key] = updated === file.content
-      ? "unchanged"
-      : await putFile(env, target.repo, target.workflowPath, updated, file.sha, `通过控制台更新${key}定时设置`);
+    commits[key] = updated === file.content ? "unchanged" : await putFile(env, target.repo, target.workflowPath, updated, file.sha, `通过控制台更新${key}定时设置`);
   }
   const current = await getFile(env, CONTROL_REPO, CONFIG_PATH);
   const serialized = `${JSON.stringify(config, null, 2)}\n`;
-  commits.config = current.content === serialized
-    ? "unchanged"
-    : await putFile(env, CONTROL_REPO, CONFIG_PATH, serialized, current.sha, "保存生产控制台定时设置");
+  commits.config = current.content === serialized ? "unchanged" : await putFile(env, CONTROL_REPO, CONFIG_PATH, serialized, current.sha, "保存生产控制台定时设置");
   return { status: "success", config, commits };
 }
 
@@ -432,12 +390,8 @@ async function handle(request, env) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (origin && origin !== ALLOWED_ORIGIN) return json({ detail: "来源不允许" }, 403, origin);
   if (url.pathname === "/" && request.method === "GET") return json({ status: "ok", service: "production-control-api" }, 200, origin);
-
   if (!env.CONTROL_PANEL_KEY) return json({ detail: "CONTROL_PANEL_KEY 未配置" }, 503, origin);
-  if (!await sameSecret(request.headers.get("x-control-key") || "", env.CONTROL_PANEL_KEY)) {
-    return json({ detail: "控制台口令不正确" }, 401, origin);
-  }
-
+  if (!await sameSecret(request.headers.get("x-control-key") || "", env.CONTROL_PANEL_KEY)) return json({ detail: "控制台口令不正确" }, 401, origin);
   try {
     if (url.pathname === "/api/run/split" && request.method === "POST") return json(await dispatch(env, "split"), 200, origin);
     if (url.pathname === "/api/run/parts" && request.method === "POST") return json(await dispatch(env, "parts"), 200, origin);
