@@ -27,11 +27,13 @@
 }
 
 .parts-stat.success { border-color: rgba(51, 214, 159, .46); background: rgba(28, 88, 70, .24); }
-.parts-stat.duplicate { border-color: rgba(255, 196, 77, .46); background: rgba(94, 68, 20, .22); }
+.parts-stat.duplicate,
+.parts-stat.skipped { border-color: rgba(255, 196, 77, .46); background: rgba(94, 68, 20, .22); }
 .parts-stat.failed { border-color: rgba(255, 107, 121, .46); background: rgba(83, 29, 41, .28); }
 
 .success-block { background: rgba(28, 88, 70, .20); border-color: rgba(51, 214, 159, .40); }
-.duplicate-block { background: rgba(94, 68, 20, .18); border-color: rgba(255, 196, 77, .38); }
+.duplicate-block,
+.skipped-block { background: rgba(94, 68, 20, .18); border-color: rgba(255, 196, 77, .38); }
 
 .board-result-table {
   margin-top: 13px;
@@ -67,7 +69,8 @@
 .board-result-row strong { color: #f1f7ff; }
 .board-result-row span { color: #a8bbcf; overflow-wrap: anywhere; }
 .board-row-success span:nth-child(2) { color: #67dfb7; font-weight: 800; }
-.board-row-duplicate span:nth-child(2) { color: #ffd16c; font-weight: 800; }
+.board-row-duplicate span:nth-child(2),
+.board-row-skipped span:nth-child(2) { color: #ffd16c; font-weight: 800; }
 .board-row-failed span:nth-child(2) { color: #ff8e99; font-weight: 800; }
 
 @media (max-width: 760px) {
