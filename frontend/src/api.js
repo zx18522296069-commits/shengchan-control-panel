@@ -33,8 +33,10 @@ async function request(path, options = {}) {
 }
 
 function boardKey(item = {}) {
-  const text = `${item.title || ''} ${item.filename || ''}`;
-  return text.match(/#\d+(?:-\d+)?/)?.[0] || item.title || text;
+  const text = `${item.board_id || ''} ${item.title || ''} ${item.filename || ''}`;
+  return text.match(/#\d+(?:-\d+)?/)?.[0]
+    || text.match(/废\d+(?:-\d+)?/)?.[0]
+    || '';
 }
 
 function isSuccessfulBoard(item = {}) {
@@ -45,20 +47,24 @@ function isSuccessfulBoard(item = {}) {
 function normalizePartsResult(payload) {
   if (!payload || payload.task !== 'parts') return payload;
 
+  // “未加工更新”的本次扫描总数只能来自逐板结果。
+  // completion.total 可能来自旧接口的“订单源数量”，绝不能拿来当板材数量。
   const rows = new Map();
   for (const item of Array.isArray(payload.board_results) ? payload.board_results : []) {
     const key = boardKey(item);
-    if (key && /#\d+/.test(key)) rows.set(key, item);
+    if (!key) continue;
+    rows.set(key, item);
   }
 
   for (const item of Array.isArray(payload.successes) ? payload.successes : []) {
     const key = boardKey(item);
-    if (!key || !/#\d+/.test(key) || rows.has(key)) continue;
+    if (!key || rows.has(key)) continue;
     rows.set(key, {
       title: item.title || key,
+      board_id: key,
       record_status: item.record_status || '已累计、已处理',
       cause: item.cause || item.detail || '本次处理成功',
-      action: item.action || '无',
+      action: item.action || '已移动到“已录入数量”。',
     });
   }
 
@@ -66,9 +72,10 @@ function normalizePartsResult(payload) {
     const status = String(item.record_status || '');
     if (!(status === '未累计、未记录' || status.includes('未累计'))) continue;
     const key = boardKey(item);
-    if (!key || !/#\d+/.test(key)) continue;
+    if (!key) continue;
     rows.set(key, {
       title: item.title || key,
+      board_id: key,
       record_status: item.record_status || '未累计、未记录',
       cause: item.cause || item.reason || '未提供原因',
       action: item.action || '核对该板拆图结果和对应订单原始汇总表后重新执行。',
@@ -76,19 +83,20 @@ function normalizePartsResult(payload) {
   }
 
   const boardResults = [...rows.values()];
-  if (!boardResults.length) return payload;
-
   const completed = boardResults.filter(isSuccessfulBoard).length;
   const total = boardResults.length;
   const failed = total - completed;
+  const executionFinished = ['success', 'partial', 'failure'].includes(payload.status);
 
   return {
     ...payload,
-    status: failed ? (completed ? 'partial' : 'failure') : 'success',
+    status: total
+      ? (failed ? (completed ? 'partial' : 'failure') : 'success')
+      : payload.status,
     board_results: boardResults,
     completion: {
-      percent: Math.round((completed / total) * 100),
-      completed,
+      percent: total ? 100 : (executionFinished ? 100 : 0),
+      completed: total,
       total,
       unit: '张板材',
     },
