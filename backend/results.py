@@ -18,9 +18,10 @@ def _headers() -> dict:
 
 
 def _split_board_id(filename: str) -> str:
-    """待拆板材编号取图片文件名，保留 #-1 等完整小序号。"""
+    """待拆板材编号取文件名首段，兼容图片和 PDF，并保留 #-1 等完整小序号。"""
     name = re.sub(r"^完成_", "", filename.strip())
-    return re.sub(r"\.[^.]+$", "", name) or filename
+    name = re.sub(r"\.[^.]+$", "", name)
+    return (name.split()[0] if name.split() else name) or filename
 
 
 def _latest_run(repo: str, workflow: str) -> dict:
@@ -79,13 +80,19 @@ def get_result(task: str) -> dict:
     except requests.RequestException as error:
         result["summary"] = [f"运行结果读取失败：{error}"]
         return result
-    scanned = re.search(r"扫描到 (\d+) 张未完成图片", log)
+
+    # 新日志统一称“图纸文件”，同时兼容历史“张未完成图片/PDF”日志。
+    scanned = re.search(
+        r"扫描到\s+(\d+)\s+(?:个未完成图纸文件(?:（图片/PDF）)?|张未完成图片(?:/PDF)?)",
+        log,
+    )
     pending_boards = re.search(r"待处理板材(\d+)张", log)
     if scanned:
         total = int(scanned.group(1))
-        result["completion"].update({"total": total, "unit": "张图片"})
+        result["completion"].update({"total": total, "unit": "个图纸文件"})
     elif pending_boards:
         result["completion"].update({"total": int(pending_boards.group(1)), "unit": "张板材"})
+
     for line in log.splitlines():
         clean = re.sub(r"^\d{4}-\d{2}-\d{2}T[^ ]+Z\s+", "", line).strip()
         if "处理失败｜阶段=" in clean:
@@ -95,7 +102,7 @@ def get_result(task: str) -> dict:
             filename = re.search(r"文件=([^；]+)", reason)
             file_name = filename.group(1) if filename else "未识别文件"
             cause = reason.split("；", 1)[1] if "；" in reason else reason
-            action = advice.removeprefix("处理建议=").strip() or "检查图片和对应基础资料后重新执行。"
+            action = advice.removeprefix("处理建议=").strip() or "检查该图纸文件和对应基础资料后重新执行。"
             result["issues"].append({
                 "title": _split_board_id(file_name),
                 "record_status": "未拆出结果",
@@ -138,8 +145,17 @@ def get_result(task: str) -> dict:
                 })
         elif task == "parts" and "已归档拆图结果:" in clean:
             result["successes"].append({"title": clean, "detail": "已移动到已录入数量"})
+        elif task == "split" and re.search(r"(?:处理|验证)(?:成功|完成)[：:]", clean) and "->" in clean:
+            match = re.search(r"(?:处理|验证)(?:成功|完成)[：:]\s*(.+?)\s*->\s*(.+)$", clean)
+            if match:
+                source_name, output_name = match.groups()
+                result["successes"].append({
+                    "title": _split_board_id(source_name),
+                    "detail": f"已生成 {output_name.strip()}",
+                })
         elif "处理完成" in clean and "->" in clean:
             result["successes"].append({"title": clean, "detail": "已生成并归档"})
+
     if result["issues"]:
         result["completion"]["completed"] = len(result["successes"])
         result["completion"]["percent"] = round(100 * len(result["successes"]) / max(result["completion"]["total"], 1))
