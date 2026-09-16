@@ -47,8 +47,8 @@ function isSuccessfulBoard(item = {}) {
 function normalizePartsResult(payload) {
   if (!payload || payload.task !== 'parts') return payload;
 
-  // “未加工更新”的扫描总数优先保留后台真实的待处理板材数。
-  // 旧接口可能只解析出部分逐板结果，绝不能用“已解析行数”反向覆盖真实扫描总数。
+  // “本次扫描板材数”只能来自本轮逐板处理结果。
+  // 旧线上 Worker 的 completion.total 可能仍是“订单源数量”（如 24），禁止用于板材计数。
   const rows = new Map();
   for (const item of Array.isArray(payload.board_results) ? payload.board_results : []) {
     const key = boardKey(item);
@@ -101,21 +101,19 @@ function normalizePartsResult(payload) {
 
   const boardResults = [...rows.values()];
   const successful = boardResults.filter(isSuccessfulBoard).length;
-  const classified = boardResults.length;
-  const reportedTotal = Number(payload?.completion?.total || 0);
-  const total = Math.max(reportedTotal, classified);
-  const failed = classified - successful;
+  const total = boardResults.length;
+  const failed = total - successful;
   const executionFinished = ['success', 'partial', 'failure'].includes(payload.status);
 
   return {
     ...payload,
-    status: classified
-      ? (failed ? (successful ? 'partial' : 'failure') : (classified >= total ? 'success' : payload.status))
+    status: total
+      ? (failed ? (successful ? 'partial' : 'failure') : 'success')
       : payload.status,
     board_results: boardResults,
     completion: {
-      percent: total ? Math.min(100, Math.round((classified / total) * 100)) : (executionFinished ? 100 : 0),
-      completed: classified,
+      percent: total ? 100 : (executionFinished ? 100 : 0),
+      completed: total,
       total,
       unit: '张板材',
     },
