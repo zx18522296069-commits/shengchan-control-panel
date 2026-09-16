@@ -3,7 +3,7 @@ import { getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setCo
 import Settings from './pages/Settings';
 
 const TASKS = {
-  split: { label: '拆图', description: '扫描待拆图纸并生成拆图结果' },
+  split: { label: '拆图', description: '扫描待拆图纸（PDF/图片）并生成拆图结果' },
   parts: { label: '未加工更新', description: '汇总各订单未加工零件明细' },
   draw: { label: '画图', description: '读取网盘来图，生成严格标注的 DXF、预览图和汇总表' },
 };
@@ -16,7 +16,7 @@ const STATUS_TEXT = {
 
 function ResultPanel({ task, result, loading, error, onClose }) {
   const meta = TASKS[task];
-  const completion = result?.completion || { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '张图片' : '个订单' };
+  const completion = result?.completion || { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '个订单' };
   const resultState = taskState(result);
   const boardRows = task === 'parts' ? (result?.board_results || []) : (result?.issues || []);
 
