@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { getConfig, saveConfig } from '../api';
 
+// 配置读取失败时不提供任何业务固定时间，避免形成第二套默认定时。
 const DEFAULT_CONFIG = {
   tasks: {
-    split: { enabled: true, schedule_mode: 'hourly', minute: 0, times: ['22:00'] },
-    parts: { enabled: true, schedule_mode: 'daily', times: ['17:25', '22:00'] },
+    split: { enabled: false, schedule_mode: 'daily', minute: 0, times: [] },
+    parts: { enabled: false, schedule_mode: 'daily', times: [] },
   },
 };
 
@@ -29,18 +30,19 @@ function Settings({ onClose }) {
   }
 
   function updateTime(key, index, value) {
-    const times = [...config.tasks[key].times];
+    const times = [...(config.tasks[key].times || [])];
+    while (times.length <= index) times.push('');
     times[index] = value;
     updateTask(key, { times });
   }
 
   async function submit(event) {
     event.preventDefault();
-    setState({ saving: true, message: '正在保存并同步定时任务…', error: false });
+    setState({ saving: true, message: '正在保存控制台定时配置…', error: false });
     try {
       const saved = await saveConfig(config);
       setConfig(saved.config || config);
-      setState({ saving: false, message: '设置已保存并同步', error: false });
+      setState({ saving: false, message: '设置已保存；未加工任务将由控制台后台调度', error: false });
     } catch (error) {
       setState({ saving: false, message: error.message, error: true });
     }
@@ -65,14 +67,14 @@ function Settings({ onClose }) {
                 <option value="hourly">每小时整点</option><option value="daily">每天指定时间</option>
               </select>
             </label>
-            {split.schedule_mode === 'daily' && <label className="field-label">执行时间（北京时间）<input type="time" value={split.times?.[0] || '22:00'} onChange={(e) => updateTime('split', 0, e.target.value)} /></label>}
+            {split.schedule_mode === 'daily' && <label className="field-label">执行时间（北京时间）<input type="time" value={split.times?.[0] || ''} onChange={(e) => updateTime('split', 0, e.target.value)} required={split.enabled} /></label>}
           </div>
 
           <div className="setting-card">
-            <div className="setting-title"><div><h3>未加工更新</h3><p>每天两个固定时间执行</p></div><label className="switch"><input type="checkbox" checked={parts.enabled} onChange={(e) => updateTask('parts', { enabled: e.target.checked })} /><span /></label></div>
+            <div className="setting-title"><div><h3>未加工更新</h3><p>正式自动时间只保存在控制台，由后台调度器到点触发</p></div><label className="switch"><input type="checkbox" checked={parts.enabled} onChange={(e) => updateTask('parts', { enabled: e.target.checked })} /><span /></label></div>
             <div className="time-row">
-              <label className="field-label">第一次（北京时间）<input type="time" value={parts.times?.[0] || '17:25'} onChange={(e) => updateTime('parts', 0, e.target.value)} /></label>
-              <label className="field-label">第二次（北京时间）<input type="time" value={parts.times?.[1] || '22:00'} onChange={(e) => updateTime('parts', 1, e.target.value)} /></label>
+              <label className="field-label">第一次（北京时间）<input type="time" value={parts.times?.[0] || ''} onChange={(e) => updateTime('parts', 0, e.target.value)} required={parts.enabled} /></label>
+              <label className="field-label">第二次（北京时间）<input type="time" value={parts.times?.[1] || ''} onChange={(e) => updateTime('parts', 1, e.target.value)} required={parts.enabled} /></label>
             </div>
           </div>
 
