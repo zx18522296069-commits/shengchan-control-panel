@@ -5,7 +5,6 @@ on:
   # 未加工实际运行时间只读取 backend/config.json 中的前端配置。
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch:
 
 permissions:
   contents: read
