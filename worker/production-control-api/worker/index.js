@@ -195,52 +195,134 @@ function splitBoardId(filename) {
 
 function parsePartsResult(log, latest) {
   const lines = log.split(/\r?\n/).map(cleanLogLine);
-  const total = Number(lines.map((line) => line.match(/发现订单原始汇总表\s+(\d+)\s+个/)?.[1]).filter(Boolean).at(-1) || 0);
-  const successes = [];
-  const issues = [];
-  const acceptedBoards = [];
+  const orderTotal = Number(lines.map((line) => line.match(/发现订单原始汇总表\s+(\d+)\s+个/)?.[1]).filter(Boolean).at(-1) || 0);
+  const pendingTotal = Number(
+    lines.map((line) => line.match(/拆图结果根目录待处理完成文件\s+(\d+)\s+个/)?.[1]).filter(Boolean).at(-1)
+      || lines.map((line) => line.match(/待处理板材\s*(\d+)\s*张/)?.[1]).filter(Boolean).at(-1)
+      || 0,
+  );
+  const boardOutcomes = new Map();
+  const fallbackBoards = new Map();
+  const sourceIssues = [];
   const warnings = [];
+  let reusedSources = null;
+  let refreshedSources = null;
+
   for (const line of lines) {
     let match = line.match(/^板材处理结果｜文件=([^｜]+)｜板材=([^｜]+)｜状态=([^｜]+)｜原因=([^｜]+)｜处理建议=(.+)$/);
     if (match) {
       const [, filename, board, record_status, cause, action] = match;
-      issues.push({ title: `${board}（${filename}）`, record_status, cause, action, reason: cause });
+      const success = record_status.startsWith("已") && !record_status.includes("未");
+      boardOutcomes.set(board, success ? {
+        success: true,
+        item: { title: `板材 ${board}`, record_status, detail: cause || record_status },
+      } : {
+        success: false,
+        item: { title: `${board}（${filename}）`, record_status, cause, action, reason: cause },
+      });
       continue;
     }
-    match = line.match(/^读取订单源\s+(.+?)：\s*(\d+)\s+条零件$/);
-    if (match) successes.push({ title: match[1], detail: `读取 ${match[2]} 条零件` });
+
+    match = line.match(/^订单源增量处理：复用缓存\s+(\d+)\s+个，重新下载解析\s+(\d+)\s+个$/);
+    if (match) {
+      reusedSources = Number(match[1]);
+      refreshedSources = Number(match[2]);
+      continue;
+    }
+
+    match = line.match(/^(?:复用订单源缓存|重新读取订单源|读取订单源)\s+(.+?)：\s*(\d+)\s+条零件$/);
+    if (match) continue;
+
     match = line.match(/^订单源未完成\s+(.+?):\s*(.+)$/);
-    if (match) issues.push({ title: match[1], reason: match[2] });
+    if (match) {
+      sourceIssues.push({ title: match[1], record_status: "订单源未完成", cause: match[2], action: "修正该订单原始汇总表后重新执行。", reason: match[2] });
+      continue;
+    }
+    match = line.match(/^复用订单源异常缓存\s+(.+?):\s*(.+)$/);
+    if (match) {
+      sourceIssues.push({ title: match[1], record_status: "订单源未完成", cause: match[2], action: "修正该订单原始汇总表后重新执行。", reason: match[2] });
+      continue;
+    }
     match = line.match(/^未完成订单\s+(.+?):\s*(.+)$/);
-    if (match) issues.push({ title: match[1], reason: match[2] });
-    match = line.match(/^板材\s+(.+?)\s+阻断：(.+)$/);
-    if (match) issues.push({ title: `板材 ${match[1]}`, reason: match[2] });
-    match = line.match(/^测试发现阻断板材\s+(.+?):\s*(.+)$/);
-    if (match) issues.push({ title: `板材 ${match[1]}`, reason: match[2] });
-    match = line.match(/^板材\s+(.+?)\s+已入账但根目录文件无法安全补归档：(.+)$/);
-    if (match) warnings.push({ title: `板材 ${match[1]}`, reason: match[2] });
+    if (match) {
+      sourceIssues.push({ title: match[1], record_status: "订单源未完成", cause: match[2], action: "修正该订单原始汇总表后重新执行。", reason: match[2] });
+      continue;
+    }
+
     match = line.match(/^板材\s+(.+?)\s+校验通过：计入\s+(\d+)\s+件$/);
-    if (match) acceptedBoards.push({ title: `板材 ${match[1]}`, detail: `成功计入 ${match[2]} 件` });
+    if (match) {
+      fallbackBoards.set(match[1], {
+        success: true,
+        item: { title: `板材 ${match[1]}`, detail: `成功计入 ${match[2]} 件` },
+      });
+      continue;
+    }
+    match = line.match(/^板材\s+(.+?)\s+阻断：(.+)$/);
+    if (match) {
+      fallbackBoards.set(match[1], {
+        success: false,
+        item: { title: `板材 ${match[1]}`, record_status: "未累计、未记录", cause: match[2], action: "核对该板拆图结果和对应订单原始汇总表后重新执行。", reason: match[2] },
+      });
+      continue;
+    }
+    match = line.match(/^测试发现阻断板材\s+(.+?):\s*(.+)$/);
+    if (match) {
+      fallbackBoards.set(match[1], {
+        success: false,
+        item: { title: `板材 ${match[1]}`, record_status: "未累计、未记录", cause: match[2], action: "核对该板拆图结果和对应订单原始汇总表后重新执行。", reason: match[2] },
+      });
+      continue;
+    }
+    match = line.match(/^板材\s+(.+?)\s+已入账但根目录文件无法安全补归档：(.+)$/);
+    if (match) {
+      warnings.push({ title: `板材 ${match[1]}`, reason: match[2] });
+      continue;
+    }
     match = line.match(/^板材\s+(.+?)\s+编号重复但内容不同：(.+)$/);
     if (match) warnings.push({ title: `同号板材 ${match[1]}`, reason: match[2] });
   }
+
+  for (const [board, outcome] of fallbackBoards) {
+    if (!boardOutcomes.has(board)) boardOutcomes.set(board, outcome);
+  }
+
+  const boardSuccesses = [];
+  const boardIssues = [];
+  for (const outcome of boardOutcomes.values()) {
+    if (outcome.success) boardSuccesses.push(outcome.item);
+    else boardIssues.push(outcome.item);
+  }
+
   const fatal = fatalIssue(lines);
-  if (fatal && !issues.some((item) => fatal.includes(item.reason) || item.reason.includes(fatal))) issues.push({ title: "任务中断", reason: fatal });
-  const boardTotal = acceptedBoards.length + issues.filter((item) => item.title.startsWith("#") || item.title.startsWith("板材 #")).length;
-  const completed = boardTotal ? acceptedBoards.length : Math.min(successes.length, total || successes.length);
-  const percent = boardTotal ? Math.round((completed / boardTotal) * 100) : (total ? Math.round((completed / total) * 100) : (latest.conclusion === "success" ? 100 : 0));
+  const fatalIssues = fatal ? [{ title: "任务中断", record_status: "运行异常", cause: fatal, action: "打开 GitHub 运行日志核对后重新执行。", reason: fatal }] : [];
+  const issues = uniqueItems([...boardIssues, ...sourceIssues, ...fatalIssues]);
+  const completed = boardSuccesses.length;
+  const total = pendingTotal || boardOutcomes.size;
+  const percent = total ? Math.round((completed / total) * 100) : (latest.conclusion === "success" ? 100 : 0);
   const remaining = lines.map((line) => line.match(/生成后活动订单当前剩余件数\s+(-?\d+)/)?.[1]).filter(Boolean).at(-1);
   const weight = lines.map((line) => line.match(/生成后活动订单当前未出重量\s+([\d.]+)\s+t/)?.[1]).filter(Boolean).at(-1);
   const summary = [];
-  if (acceptedBoards.length) summary.push(`本次成功入账 ${acceptedBoards.length} 张板材`);
+
+  if (total === 0 && latest.conclusion === "success") summary.push("本次没有待处理板材，台账已刷新");
+  else if (completed) summary.push(`本次成功处理 ${completed}/${total || completed} 张板材`);
+  if (reusedSources !== null && refreshedSources !== null) {
+    summary.push(`订单源：复用缓存 ${reusedSources} 个，重新下载解析 ${refreshedSources} 个`);
+  } else if (orderTotal) {
+    summary.push(`当前订单源 ${orderTotal} 个`);
+  }
   if (remaining !== undefined) summary.push(`当前剩余 ${remaining} 件`);
   if (weight !== undefined) summary.push(`当前未出重量 ${weight} t`);
+
+  let status = latest.conclusion || "unknown";
+  if (fatal) status = "failure";
+  else if (issues.length) status = completed || latest.conclusion === "success" ? "partial" : "failure";
+
   return {
-    status: issues.length ? (completed ? "partial" : "failure") : (latest.conclusion || "unknown"),
-    completion: { percent, completed, total: boardTotal || total || completed, unit: boardTotal ? "张板材" : "个订单" },
+    status,
+    completion: { percent, completed, total, unit: "张板材" },
     summary,
-    successes: uniqueItems(acceptedBoards),
-    issues: uniqueItems(issues),
+    successes: uniqueItems(boardSuccesses),
+    issues,
     warnings: uniqueItems(warnings),
   };
 }
