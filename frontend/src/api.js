@@ -48,7 +48,7 @@ function normalizePartsResult(payload) {
   if (!payload || payload.task !== 'parts') return payload;
 
   // “本次扫描板材数”只能来自本轮逐板处理结果。
-  // 旧线上 Worker 的 completion.total 可能仍是“订单源数量”（如 24），禁止用于板材计数。
+  // completion.total 可能来自旧 Worker 的订单源数量，永远不能参与板材计数。
   const rows = new Map();
   for (const item of Array.isArray(payload.board_results) ? payload.board_results : []) {
     const key = boardKey(item);
@@ -68,49 +68,67 @@ function normalizePartsResult(payload) {
     });
   }
 
+  const sourceIssues = [];
   for (const item of Array.isArray(payload.issues) ? payload.issues : []) {
     const status = String(item.record_status || '');
-    if (!(status === '未累计、未记录' || status.includes('未累计'))) continue;
     const key = boardKey(item);
-    if (!key) continue;
-    rows.set(key, {
-      title: item.title || key,
-      board_id: key,
-      record_status: item.record_status || '未累计、未记录',
-      cause: item.cause || item.reason || '未提供原因',
-      action: item.action || '核对该板拆图结果和对应订单原始汇总表后重新执行。',
+    if (status === '未累计、未记录' || status.includes('未累计')) {
+      if (!key) continue;
+      rows.set(key, {
+        title: item.title || key,
+        board_id: key,
+        record_status: item.record_status || '未累计、未记录',
+        cause: item.cause || item.reason || '未提供原因',
+        action: item.action || '核对该板拆图结果和对应订单原始汇总表后重新执行。',
+      });
+      continue;
+    }
+    // 订单源异常、缺失汇总表、运行异常等不进入板材计数，但必须让用户看见。
+    sourceIssues.push({
+      title: item.title || '订单源异常',
+      reason: item.cause || item.reason || item.detail || status || '未提供原因',
     });
   }
 
   // 兼容尚未更新的线上 Worker：历史已入账但本次无法复核的板材，
-  // 旧接口可能放在 warnings 而不是 issues。只把明确“本次未成功”的逐板 warning 补进来，
-  // 普通订单源/资料 warning 不参与板材计数。
+  // 旧接口可能放在 warnings 而不是 issues。只把明确“本次未成功”的逐板 warning 补进来。
+  const nonBoardWarnings = [];
   for (const item of Array.isArray(payload.warnings) ? payload.warnings : []) {
     const key = boardKey(item);
-    if (!key || rows.has(key)) continue;
     const detail = `${item.record_status || ''} ${item.cause || ''} ${item.reason || ''} ${item.detail || ''}`;
-    if (!/无法复核|无法安全补归档|保留根目录|内容冲突|内容不同|不重复扣减、不归档|未累计|未记录/.test(detail)) continue;
-    rows.set(key, {
-      title: item.title || key,
-      board_id: key,
-      record_status: '未累计、未记录',
-      cause: item.cause || item.reason || item.detail || '本次未能安全完成入账',
-      action: item.action || '核对该板当前文件与历史入账记录及对应订单原始汇总表后重新执行。',
-    });
+    if (key && /无法复核|无法安全补归档|保留根目录|内容冲突|内容不同|不重复扣减、不归档|未累计|未记录/.test(detail)) {
+      if (!rows.has(key)) {
+        rows.set(key, {
+          title: item.title || key,
+          board_id: key,
+          record_status: '未累计、未记录',
+          cause: item.cause || item.reason || item.detail || '本次未能安全完成入账',
+          action: item.action || '核对该板当前文件与历史入账记录及对应订单原始汇总表后重新执行。',
+        });
+      }
+      continue;
+    }
+    nonBoardWarnings.push(item);
   }
 
   const boardResults = [...rows.values()];
   const successful = boardResults.filter(isSuccessfulBoard).length;
   const total = boardResults.length;
   const failed = total - successful;
+  const fatal = (Array.isArray(payload.issues) ? payload.issues : []).some((item) => String(item.record_status || '').includes('运行异常'));
   const executionFinished = ['success', 'partial', 'failure'].includes(payload.status);
+
+  const mergedWarnings = [...nonBoardWarnings, ...sourceIssues].filter((item, index, all) => {
+    const key = `${item.title || ''}\n${item.reason || item.detail || ''}`;
+    return all.findIndex((other) => `${other.title || ''}\n${other.reason || other.detail || ''}` === key) === index;
+  });
 
   return {
     ...payload,
-    status: total
-      ? (failed ? (successful ? 'partial' : 'failure') : 'success')
-      : payload.status,
+    // GitHub 任务正常结束但存在业务阻断时属于“部分完成”，不是程序执行失败。
+    status: fatal ? 'failure' : (failed || mergedWarnings.length ? 'partial' : (executionFinished ? 'success' : payload.status)),
     board_results: boardResults,
+    warnings: mergedWarnings,
     completion: {
       percent: total ? 100 : (executionFinished ? 100 : 0),
       completed: total,
