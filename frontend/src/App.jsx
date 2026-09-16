@@ -14,11 +14,159 @@ const STATUS_TEXT = {
   token_missing: '服务未配置', api_error: '读取失败', unknown: '未知',
 };
 
+function extractBoardId(item) {
+  const original = String(item?.board_id || item?.title || '').trim();
+  if (!original) return '';
+  const archived = original.match(/已归档拆图结果[:：]\s*(.+?)_完成(?:\.[A-Za-z0-9]+)?(?:\s|$|->)/);
+  if (archived) return archived[1].trim();
+  return original
+    .replace(/^板材\s+/, '')
+    .replace(/（.*$/, '')
+    .replace(/\(.*$/, '')
+    .trim();
+}
+
+function isBoardResultItem(item, source) {
+  if (source === 'board_results') return true;
+  const status = String(item?.record_status || '');
+  if (/订单源未完成|运行异常/.test(status)) return false;
+  const board = extractBoardId(item);
+  const text = `${status} ${item?.cause || ''} ${item?.reason || ''} ${item?.detail || ''}`;
+  return Boolean(board) && (
+    /^#/.test(board)
+    || /^废\d/.test(board)
+    || /已累计|未累计|补归档|首次校验通过|同板材号|板材/.test(text)
+    || /已归档拆图结果/.test(String(item?.title || ''))
+  );
+}
+
+function classifyBoardItem(item, inferredKind = '') {
+  const text = `${item?.record_status || ''} ${item?.cause || ''} ${item?.reason || ''} ${item?.detail || ''}`;
+  if (/内容冲突|内容不同|无法唯一一致复核/.test(text)) return 'failed';
+  if (/仅补归档|补归档|未重复累计|重复内容|历史已入账/.test(text)) return 'duplicate';
+  if (/已累计、已录入|首次校验通过|成功计入|已写回累计台账/.test(text)) return 'success';
+  if (inferredKind === 'success') return 'success';
+  return 'failed';
+}
+
+function normalizePartsBoards(result) {
+  const rows = new Map();
+
+  const add = (item, source, inferredKind, priority) => {
+    if (!isBoardResultItem(item, source)) return;
+    const board = extractBoardId(item);
+    if (!board) return;
+    const kind = classifyBoardItem(item, inferredKind);
+    const existing = rows.get(board);
+    if (existing && existing.priority > priority) return;
+
+    const defaultStatus = kind === 'success'
+      ? '已累计、已录入'
+      : kind === 'duplicate' ? '已累计、仅补归档' : '未累计、未记录';
+    const detail = item?.cause || item?.reason || item?.detail || '';
+    const defaultAction = kind === 'failed'
+      ? '核对该板拆图结果和对应订单原始汇总表后重新执行。'
+      : '已移动到“已录入数量”。';
+
+    rows.set(board, {
+      board,
+      kind,
+      record_status: item?.record_status || defaultStatus,
+      cause: detail || defaultStatus,
+      action: item?.action || defaultAction,
+      priority,
+    });
+  };
+
+  (result?.board_results || []).forEach((item) => add(item, 'board_results', '', 3));
+  (result?.successes || []).forEach((item) => add(item, 'successes', 'success', 2));
+  (result?.issues || []).forEach((item) => add(item, 'issues', 'failed', 2));
+
+  const all = Array.from(rows.values());
+  const success = all.filter((item) => item.kind === 'success');
+  const duplicate = all.filter((item) => item.kind === 'duplicate');
+  const failed = all.filter((item) => item.kind === 'failed');
+  const classified = success.length + duplicate.length + failed.length;
+  const reportedTotal = Number(result?.completion?.total || 0);
+  const total = Math.max(reportedTotal, classified);
+  const finished = ['success', 'partial'].includes(result?.status) && classified >= total;
+  const percent = total > 0
+    ? Math.min(100, Math.round((classified / total) * 100))
+    : (['success', 'partial'].includes(result?.status) ? 100 : Number(result?.completion?.percent || 0));
+
+  return { all, success, duplicate, failed, classified, total, percent, finished };
+}
+
+function PartsBoardTable({ rows, type }) {
+  const lastHeading = type === 'failed' ? '下一步怎么处理' : '文件去向';
+  return (
+    <div className="board-result-table" role="table">
+      <div className="board-result-head" role="row">
+        <strong>板材编号</strong>
+        <strong>处理状态</strong>
+        <strong>处理说明</strong>
+        <strong>{lastHeading}</strong>
+      </div>
+      {rows.map((item) => (
+        <div className={`board-result-row board-row-${type}`} role="row" key={item.board}>
+          <strong>{item.board}</strong>
+          <span>{item.record_status}</span>
+          <span>{item.cause}</span>
+          <span>{item.action}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PartsResults({ result }) {
+  const boards = normalizePartsBoards(result);
+  return (
+    <>
+      <div className="parts-summary-grid" aria-label="本次板材处理统计">
+        <div className="parts-stat"><span>本次扫描</span><strong>{boards.total}</strong><small>张板材</small></div>
+        <div className="parts-stat success"><span>成功录入</span><strong>{boards.success.length}</strong><small>张</small></div>
+        <div className="parts-stat duplicate"><span>重复已处理</span><strong>{boards.duplicate.length}</strong><small>张</small></div>
+        <div className="parts-stat failed"><span>未成功</span><strong>{boards.failed.length}</strong><small>张</small></div>
+      </div>
+
+      <section className="result-block success-block">
+        <div className="result-block-title"><h3>成功录入</h3><span>{boards.success.length}</span></div>
+        {boards.success.length
+          ? <PartsBoardTable rows={boards.success} type="success" />
+          : <p className="empty-result">本次没有新录入板材。</p>}
+      </section>
+
+      <section className="result-block duplicate-block">
+        <div className="result-block-title"><h3>重复板材（已处理）</h3><span>{boards.duplicate.length}</span></div>
+        {boards.duplicate.length
+          ? <PartsBoardTable rows={boards.duplicate} type="duplicate" />
+          : <p className="empty-result">本次没有“同板号 + 同内容”的重复板材。</p>}
+      </section>
+
+      <section className="result-block issues-block">
+        <div className="result-block-title"><h3>未成功</h3><span>{boards.failed.length}</span></div>
+        {boards.failed.length
+          ? <PartsBoardTable rows={boards.failed} type="failed" />
+          : <p className="empty-result">本次扫描到的板材均已处理完成。</p>}
+      </section>
+    </>
+  );
+}
+
 function ResultPanel({ task, result, loading, error, onClose }) {
   const meta = TASKS[task];
-  const completion = result?.completion || { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '个订单' };
+  const defaultCompletion = { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '个订单' };
+  const completion = result?.completion || defaultCompletion;
   const resultState = taskState(result);
-  const boardRows = task === 'parts' ? (result?.board_results || []) : (result?.issues || []);
+  const partsBoards = task === 'parts' ? normalizePartsBoards(result) : null;
+  const shownCompletion = task === 'parts'
+    ? { percent: partsBoards.percent, completed: partsBoards.classified, total: partsBoards.total, unit: '张板材' }
+    : completion;
+  const shownState = task === 'parts' && partsBoards.finished
+    ? { tone: 'success', text: '执行完成' }
+    : resultState;
+  const boardRows = result?.issues || [];
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -34,45 +182,50 @@ function ResultPanel({ task, result, loading, error, onClose }) {
         {!loading && !error && result && (
           <>
             <div className="result-overview">
-              <div className="completion-ring" style={{ '--progress': `${completion.percent}%` }}>
-                <strong>{completion.percent}%</strong><span>完成度</span>
+              <div className="completion-ring" style={{ '--progress': `${shownCompletion.percent}%` }}>
+                <strong>{shownCompletion.percent}%</strong><span>{task === 'parts' ? '扫描完成度' : '完成度'}</span>
               </div>
               <div className="completion-copy">
-                <span className={`badge ${resultState.tone}`}><span className="status-dot" />{resultState.text}</span>
-                <h3>{completion.completed}/{completion.total} {completion.unit}已完成</h3>
-                <p>{result.summary?.length ? result.summary.join('；') : '本次结果已整理完成'}</p>
+                <span className={`badge ${shownState.tone}`}><span className="status-dot" />{shownState.text}</span>
+                {task === 'parts' ? (
+                  <>
+                    <h3>本次扫描 {partsBoards.total} 张板材</h3>
+                    <p>成功录入 {partsBoards.success.length} 张｜重复已处理 {partsBoards.duplicate.length} 张｜未成功 {partsBoards.failed.length} 张</p>
+                  </>
+                ) : (
+                  <>
+                    <h3>{shownCompletion.completed}/{shownCompletion.total} {shownCompletion.unit}已完成</h3>
+                    <p>{result.summary?.length ? result.summary.join('；') : '本次结果已整理完成'}</p>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="progress-track" aria-label={`完成度 ${completion.percent}%`}><span style={{ width: `${completion.percent}%` }} /></div>
+            <div className="progress-track" aria-label={`完成度 ${shownCompletion.percent}%`}><span style={{ width: `${shownCompletion.percent}%` }} /></div>
 
-            <section className="result-block issues-block">
-              <div className="result-block-title"><h3>{task === 'parts' ? '本次板材处理清单' : '未拆出板材'}</h3><span>{boardRows.length}</span></div>
-              {boardRows.length ? (
-                ['parts', 'split'].includes(task) ? (
-                  <div className="board-result-table" role="table" aria-label={task === 'parts' ? '本次板材处理清单' : '未拆出板材处理清单'}>
+            {task === 'parts' ? <PartsResults result={result} /> : (
+              <section className="result-block issues-block">
+                <div className="result-block-title"><h3>未拆出板材</h3><span>{boardRows.length}</span></div>
+                {boardRows.length ? (
+                  <div className="board-result-table" role="table" aria-label="未拆出板材处理清单">
                     <div className="board-result-head" role="row">
-                      <strong>{task === 'parts' ? '板材编号（完成文件名）' : '板材编号（待拆文件名）'}</strong>
-                      <strong>{task === 'parts' ? '录入情况' : '是否拆出结果'}</strong>
-                      <strong>{task === 'parts' ? '处理说明' : '为什么没有拆出'}</strong>
+                      <strong>板材编号（待拆文件名）</strong>
+                      <strong>是否拆出结果</strong>
+                      <strong>为什么没有拆出</strong>
                       <strong>下一步怎么处理</strong>
                     </div>
                     {boardRows.map((item, index) => (
                       <div className="board-result-row" role="row" key={`${item.title}-${index}`}>
                         <strong>{item.title}</strong>
-                        <span>{item.record_status || '未累计、未记录'}</span>
+                        <span>{item.record_status || '未拆出'}</span>
                         <span>{item.cause || item.reason}</span>
-                        <span>{item.action || '核对该板拆图结果和对应订单汇总表后重新执行。'}</span>
+                        <span>{item.action || '核对该板图纸和基础资料后重新执行。'}</span>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <ul className="result-list">
-                    {result.issues.map((item, index) => <li className="issue-item" key={`${item.title}-${index}`}><strong>{item.title}</strong><span>{item.reason}</span></li>)}
-                  </ul>
-                )
-              ) : <p className="empty-result">{task === 'parts' ? '本次运行未进入逐板处理阶段；请查看下方“已跳过资料”。' : '没有发现未完成项目。'}</p>}
-            </section>
+                ) : <p className="empty-result">没有发现未完成项目。</p>}
+              </section>
+            )}
 
             {result.warnings?.length > 0 && (
               <section className="result-block warning-block">
@@ -83,7 +236,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
               </section>
             )}
 
-            {result.successes?.length > 0 && (
+            {task !== 'parts' && result.successes?.length > 0 && (
               <details className="success-details">
                 <summary>查看已完成项目（{result.successes.length}）</summary>
                 <ul className="result-list">
