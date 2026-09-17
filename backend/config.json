@@ -6,7 +6,7 @@
       "schedule_mode": "daily",
       "minute": 0,
       "times": [
-        "14:07"
+        "17:00"
       ]
     },
     "parts": {
@@ -14,10 +14,9 @@
       "schedule_mode": "daily",
       "minute": 0,
       "times": [
-        "17:00",
+        "17:20",
         "12:00"
-      ],
-      "schedule_updated_at": "2026-09-16T08:35:00Z"
+      ]
     }
   }
 }
