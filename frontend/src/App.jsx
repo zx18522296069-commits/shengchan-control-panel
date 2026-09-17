@@ -304,6 +304,7 @@ function App() {
   const [notice, setNotice] = useState({ tone: 'idle', text: '系统待机，可选择任务执行' });
   const [running, setRunning] = useState('');
   const [drawOrder, setDrawOrder] = useState('');
+  const [drawFiles, setDrawFiles] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [resultTask, setResultTask] = useState('');
@@ -375,8 +376,15 @@ function App() {
 
   async function startDraw() {
     const orderName = drawOrder.trim();
+    if (drawFiles.length > 0) {
+      setNotice({
+        tone: 'failed',
+        text: `已选择 ${drawFiles.length} 个上传文件：上传优先，不会读取网盘输入框。上传执行后端尚未接入，当前不提交任务。`,
+      });
+      return;
+    }
     if (!orderName) {
-      setNotice({ tone: 'failed', text: '请先输入网盘“赵欣/来图”中的完整订单文件夹名' });
+      setNotice({ tone: 'failed', text: '请上传文件，或输入网盘“赵欣/来图”中的完整订单文件夹名；两边都为空时不执行。' });
       return;
     }
     await execute('draw', () => runDraw(orderName));
@@ -408,11 +416,29 @@ function App() {
         </button>
       </header>
 
-      <section aria-label="画图订单选择" style={{ marginBottom: '18px' }}>
-        <label className="field-label">要画图的订单文件夹名
-          <input type="text" value={drawOrder} onChange={(event) => setDrawOrder(event.target.value)} placeholder="例如：200.UUU-1000_0912" disabled={Boolean(running)} />
+      <section aria-label="画图输入" style={{ marginBottom: '18px', padding: '18px', marginTop: '24px', background: 'rgba(13, 29, 50, .72)', border: '1px solid #294867', borderRadius: '14px' }}>
+        <p className="eyebrow">03 画图输入</p>
+        <label className="field-label">网盘读取：订单文件夹名
+          <input type="text" value={drawOrder} onChange={(event) => setDrawOrder(event.target.value)} placeholder="例如：183.26-08-28  D53K-8000D-0828" disabled={Boolean(running)} />
         </label>
-        <p className="refresh-note">必须与网盘“赵欣/来图”中的文件夹名称完全一致，每次只处理这个订单。</p>
+        <p className="refresh-note">没有上传文件时，才读取网盘“赵欣/来图”中这里指定的订单。</p>
+
+        <label className="field-label">上传文件（优先）
+          <input
+            type="file"
+            multiple
+            accept=".zip,.pdf,.xlsx,.xlsm,.xls"
+            disabled={Boolean(running)}
+            onChange={(event) => setDrawFiles(Array.from(event.target.files || []))}
+          />
+        </label>
+        <p className="refresh-note">
+          {drawFiles.length > 0
+            ? `已选择 ${drawFiles.length} 个文件；执行时以上传文件为准，网盘输入框将被忽略。`
+            : drawOrder.trim()
+              ? `当前执行来源：Google Drive → ${drawOrder.trim()}`
+              : '当前没有输入：请上传文件或填写网盘订单；两边都为空时不执行。'}
+        </p>
       </section>
 
       <section className="action-grid" aria-label="任务操作">
