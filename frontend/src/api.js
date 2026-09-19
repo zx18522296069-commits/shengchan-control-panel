@@ -32,6 +32,28 @@ async function request(path, options = {}) {
   return payload;
 }
 
+async function requestMultipart(path, formData) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: {
+        'X-Control-Key': window.sessionStorage.getItem('control-panel-key') || '',
+      },
+      body: formData,
+    });
+  } catch {
+    throw new Error('控制服务未连接');
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.status === 'error') {
+    const error = new Error(payload.detail || payload.message || `请求失败（${response.status}）`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
 function boardKey(item = {}) {
   const text = `${item.board_id || ''} ${item.title || ''} ${item.filename || ''}`;
   return text.match(/#\d+(?:-\d+)?/)?.[0]
@@ -148,6 +170,13 @@ export function runParts() {
 
 export function runDraw(orderName = '') {
   return request('/api/run/draw', { method: 'POST', body: JSON.stringify({ order_name: orderName }) });
+}
+
+export function runDrawUpload(orderName = '', files = []) {
+  const form = new FormData();
+  form.append('order_name', orderName);
+  for (const file of files) form.append('files', file, file.name);
+  return requestMultipart('/api/run/draw/upload', form);
 }
 
 export function getStatus() {
