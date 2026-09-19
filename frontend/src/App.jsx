@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setControlKey } from './api';
+import { getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, runDraw, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 import SplitResults, { normalizeSplitResults } from './SplitResults';
 
@@ -161,6 +161,106 @@ function PartsResults({ result }) {
   );
 }
 
+function DrawReview({ result }) {
+  const [review, setReview] = useState(null);
+  const [loading, setLoading] = useState(Boolean(result?.job_id));
+  const [error, setError] = useState('');
+  const [index, setIndex] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!result?.job_id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const payload = await getDrawReview(result.job_id);
+      setReview(payload);
+      setIndex((value) => Math.min(value, Math.max(0, (payload.items?.length || 1) - 1)));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [result?.job_id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (!result?.job_id) return <p className="empty-result">当前画图任务没有验收任务编号。</p>;
+  if (loading) return <div className="result-loading">正在加载 PDF ↔ DXF 验收工作台…</div>;
+  if (error) return <div className="result-error"><strong>验收工作台读取失败</strong><span>{error}</span></div>;
+
+  const items = review?.items || [];
+  if (!items.length) return <p className="empty-result">当前没有可人工验收的 DXF 候选。</p>;
+  const item = items[index];
+  const passed = item.review_status === 'REVIEWED_PASS';
+
+  async function confirmPass() {
+    setSaving(true);
+    setError('');
+    try {
+      await markDrawReviewPass(result.job_id, item.fingerprint, '控制台人工复核');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="draw-review">
+      <div className="draw-review-toolbar">
+        <div>
+          <p className="eyebrow">PDF ↔ DXF 真实验收</p>
+          <h3>{item.drawing_no || item.source_pdf}</h3>
+          <p>{item.variant ? '版本：' + item.variant + '　' : ''}T{item.thickness ?? '—'}　{item.quantity ?? '—'}件</p>
+        </div>
+        <div className="draw-review-count">
+          <strong>{index + 1}/{items.length}</strong>
+          <span>已确认 {review.reviewed || 0}</span>
+        </div>
+      </div>
+
+      <div className="draw-review-grid">
+        <figure>
+          <figcaption>原 PDF</figcaption>
+          <a href={item.source_image_url} target="_blank" rel="noreferrer">
+            <img src={item.source_image_url} alt={(item.drawing_no || '') + ' 原PDF'} />
+          </a>
+        </figure>
+        <figure>
+          <figcaption>最终 DXF 验收预览</figcaption>
+          <a href={item.preview_url} target="_blank" rel="noreferrer">
+            <img src={item.preview_url} alt={(item.drawing_no || '') + ' DXF验收图'} />
+          </a>
+        </figure>
+      </div>
+
+      <div className="draw-review-rule">
+        对照检查：外形、实际尺寸、孔径、孔中心定位、孔距、槽/缺口、R值及取中/对称/同心中心线。
+        验收图数值来自最终 DXF 几何回读，不直接复制 PDF 尺寸数字。
+      </div>
+
+      {error && <div className="result-error"><span>{error}</span></div>}
+
+      <div className="draw-review-actions">
+        <button type="button" disabled={index === 0 || saving} onClick={() => setIndex((value) => Math.max(0, value - 1))}>上一张</button>
+        <button
+          type="button"
+          className={passed ? 'review-pass confirmed' : 'review-pass'}
+          disabled={passed || saving}
+          onClick={confirmPass}
+        >
+          {passed ? '✓ 已确认 PASS' : saving ? '正在登记…' : '确认正确 PASS'}
+        </button>
+        <button type="button" disabled={index >= items.length - 1 || saving} onClick={() => setIndex((value) => Math.min(items.length - 1, value + 1))}>下一张</button>
+      </div>
+    </section>
+  );
+}
+
 function ResultPanel({ task, result, loading, error, onClose }) {
   const meta = TASKS[task];
   const defaultCompletion = { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '张板材' };
@@ -225,7 +325,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
 
             <div className="progress-track" aria-label={`完成度 ${shownCompletion.percent}%`}><span style={{ width: `${shownCompletion.percent}%` }} /></div>
 
-            {task === 'parts' ? <PartsResults result={result} /> : task === 'split' ? <SplitResults result={result} /> : (
+            {task === 'parts' ? <PartsResults result={result} /> : task === 'split' ? <SplitResults result={result} /> : task === 'draw' ? <DrawReview result={result} /> : (
               <section className="result-block issues-block">
                 <div className="result-block-title"><h3>未拆出板材</h3><span>{boardRows.length}</span></div>
                 {boardRows.length ? (
