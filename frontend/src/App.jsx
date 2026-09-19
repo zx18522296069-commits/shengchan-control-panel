@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, runDraw, runDrawUpload, runParts, runSplit, setControlKey } from './api';
+import { getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, rerunDrawIssues, runDraw, runDrawUpload, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 import SplitResults, { normalizeSplitResults } from './SplitResults';
 
@@ -263,6 +263,23 @@ function DrawReview({ result }) {
 
 function DrawIssues({ result }) {
   const issues = Array.isArray(result?.issues) ? result.issues : [];
+  const [rerunning, setRerunning] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function rerun() {
+    if (!result?.job_id || !issues.length) return;
+    setRerunning(true);
+    setMessage('');
+    try {
+      const payload = await rerunDrawIssues(result.job_id);
+      setMessage(`已创建异常项复跑任务：${payload.job_id}`);
+    } catch (error) {
+      setMessage(`复跑失败：${error.message}`);
+    } finally {
+      setRerunning(false);
+    }
+  }
+
   if (!issues.length) {
     return (
       <section className="result-block draw-issue-block clear">
@@ -287,9 +304,10 @@ function DrawIssues({ result }) {
           </article>
         ))}
       </div>
-      <button className="draw-rerun-button" type="button" disabled title="异常项重跑后端尚未接入">
-        只重新处理异常项 · 待接入
+      <button className="draw-rerun-button active" type="button" disabled={rerunning || !result?.job_id} onClick={rerun}>
+        {rerunning ? '正在创建复跑任务…' : `只重新处理异常项 · ${issues.length}张`}
       </button>
+      {message && <p className="draw-rerun-message">{message}</p>}
     </section>
   );
 }
