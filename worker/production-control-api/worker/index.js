@@ -206,6 +206,30 @@ async function drawResult(env) {
   };
 }
 
+async function drawReviewItems(env, jobId) {
+  const payload = await drawApi(env, `/api/review/${encodeURIComponent(jobId)}`, { method: "GET" });
+  const base = drawBaseUrl(env);
+  return {
+    ...payload,
+    items: (payload.items || []).map((item) => ({
+      ...item,
+      source_image_url: item.source_image_url ? `${base}${item.source_image_url}` : null,
+      preview_url: item.preview_url ? `${base}${item.preview_url}` : null,
+    })),
+  };
+}
+
+async function markDrawReviewPass(env, jobId, fingerprint, reviewer) {
+  return drawApi(
+    env,
+    `/api/review/${encodeURIComponent(jobId)}/${encodeURIComponent(fingerprint)}/pass`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reviewer: String(reviewer || "控制台人工复核").trim() || "控制台人工复核" }),
+    },
+  );
+}
+
 async function zipEntryText(buffer) {
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
@@ -791,6 +815,20 @@ async function handle(request, env) {
     const resultMatch = url.pathname.match(/^\/api\/results\/(split|parts|draw)$/);
     if (resultMatch && request.method === "GET") {
       return json(resultMatch[1] === "draw" ? await drawResult(env) : await workflowResult(env, resultMatch[1]), 200, origin);
+    }
+    const drawReviewMatch = url.pathname.match(/^\/api\/draw\/review\/([^/]+)$/);
+    if (drawReviewMatch && request.method === "GET") {
+      return json(await drawReviewItems(env, decodeURIComponent(drawReviewMatch[1])), 200, origin);
+    }
+    const drawPassMatch = url.pathname.match(/^\/api\/draw\/review\/([^/]+)\/([^/]+)\/pass$/);
+    if (drawPassMatch && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      return json(await markDrawReviewPass(
+        env,
+        decodeURIComponent(drawPassMatch[1]),
+        decodeURIComponent(drawPassMatch[2]),
+        payload.reviewer,
+      ), 200, origin);
     }
     if (url.pathname === "/api/config" && request.method === "GET") return json(await getConfig(env), 200, origin);
     if (url.pathname === "/api/config" && request.method === "POST") {
