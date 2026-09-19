@@ -544,3 +544,24 @@ input, select { width: 100%; min-height: 44px; padding: 9px 11px; color: #edf5ff
   .draw-live-meta { justify-items: start; text-align: left; }
   .draw-quick-actions { grid-template-columns: 1fr; }
 }
+
+
+.draw-rerun-button.active {
+  color: #eef7ff;
+  background: #184f7e;
+  border-color: #3c79ae;
+  cursor: pointer;
+}
+.draw-rerun-button.active:hover {
+  background: #1c5b91;
+}
+.draw-rerun-button.active:disabled {
+  color: #71869b;
+  background: #15304a;
+  cursor: wait;
+}
+.draw-rerun-message {
+  margin: 10px 0 0;
+  color: #9fc9ff;
+  font-size: .82rem;
+}
