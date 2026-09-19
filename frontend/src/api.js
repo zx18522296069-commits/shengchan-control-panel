@@ -179,6 +179,13 @@ export function runDrawUpload(orderName = '', files = []) {
   return requestMultipart('/api/run/draw/upload', form);
 }
 
+export function rerunDrawIssues(jobId) {
+  return request('/api/run/draw/rerun-issues', {
+    method: 'POST',
+    body: JSON.stringify({ job_id: jobId }),
+  });
+}
+
 export function getStatus() {
   return request('/api/status');
 }
