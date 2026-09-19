@@ -96,6 +96,116 @@ async function github(env, path, options = {}) {
   return response.json();
 }
 
+function drawBaseUrl(env) {
+  const value = String(env.DRAW_API_BASE_URL || "").replace(/\/$/, "");
+  if (!value) throw Object.assign(new Error("DRAW_API_BASE_URL 未配置"), { status: 503 });
+  return value;
+}
+
+async function drawApi(env, path, options = {}) {
+  const headers = { "content-type": "application/json", ...(options.headers || {}) };
+  if (env.DRAW_API_TOKEN) headers.authorization = `Bearer ${env.DRAW_API_TOKEN}`;
+  const response = await fetch(`${drawBaseUrl(env)}${path}`, { ...options, headers });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.detail || payload.message || `画图服务请求失败（${response.status}）`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+function drawControlStatus(job) {
+  const status = String(job?.status || "no_runs");
+  const mapped = {
+    completed: "success",
+    needs_review: "partial",
+    failed: "failure",
+    running: "in_progress",
+    queued: "queued",
+  }[status] || status;
+  return {
+    task: "draw",
+    status: mapped,
+    event: job?.source || null,
+    run_started_at: job?.created_at || null,
+    updated_at: job?.updated_at || job?.created_at || null,
+    job_id: job?.id || null,
+    order_name: job?.order_name || null,
+    checked_at: new Date().toISOString(),
+  };
+}
+
+async function latestDrawJob(env) {
+  try {
+    return await drawApi(env, "/api/jobs/latest", { method: "GET" });
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
+async function startDraw(env, orderName) {
+  const name = String(orderName || "").trim();
+  if (!name) throw Object.assign(new Error("画图订单名称不能为空"), { status: 422 });
+  const job = await drawApi(env, "/api/jobs/drive", {
+    method: "POST",
+    body: JSON.stringify({ order_name: name }),
+  });
+  return {
+    status: "requested",
+    task: "draw",
+    job_id: job.id,
+    order_name: job.order_name || name,
+    draw_status: job.status || "queued",
+  };
+}
+
+async function drawStatus(env) {
+  const job = await latestDrawJob(env);
+  return job ? drawControlStatus(job) : { task: "draw", status: "no_runs", checked_at: new Date().toISOString() };
+}
+
+async function drawResult(env) {
+  const job = await latestDrawJob(env);
+  if (!job) {
+    return {
+      task: "draw",
+      status: "no_runs",
+      completion: { percent: 0, completed: 0, total: 0, unit: "个阶段" },
+      summary: [],
+      successes: [],
+      issues: [],
+      warnings: [],
+      links: [],
+    };
+  }
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const completed = steps.filter((item) => item.status === "ok").length;
+  const total = steps.length;
+  const percent = total ? Math.round((completed / total) * 100) : (job.status === "completed" ? 100 : 0);
+  const alerts = Array.isArray(job.alerts) ? job.alerts : [];
+  const links = [];
+  if (job.download_url) links.push({ label: "下载最终 ZIP", url: `${drawBaseUrl(env)}${job.download_url}` });
+  if (job.drive_url) links.push({ label: "打开 Google Drive", url: job.drive_url });
+  const status = drawControlStatus(job).status;
+  return {
+    task: "draw",
+    status,
+    completion: { percent, completed, total, unit: "个阶段" },
+    summary: [
+      job.order_name ? `订单：${job.order_name}` : "",
+      status === "success" ? "画图流程已完成" : status === "partial" ? "存在需要人工复核的项目" : "",
+    ].filter(Boolean),
+    successes: steps.filter((item) => item.status === "ok").map((item) => ({ title: item.text || "已完成阶段", detail: "已完成" })),
+    issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : "需要复核", cause: message, action: "按提示处理后只重跑异常项。", reason: message })),
+    warnings: [],
+    links,
+    job_id: job.id,
+    order_name: job.order_name,
+  };
+}
+
 async function zipEntryText(buffer) {
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
@@ -670,12 +780,18 @@ async function handle(request, env) {
     if (url.pathname === "/api/run/parts" && request.method === "POST") {
       return json(await dispatch(env, "parts", { trigger_source: "control-panel-manual", scheduled_for: "" }), 200, origin);
     }
-    if (url.pathname === "/api/status" && request.method === "GET") {
-      const [split, parts] = await Promise.all([workflowStatus(env, "split"), workflowStatus(env, "parts")]);
-      return json({ split, parts }, 200, origin);
+    if (url.pathname === "/api/run/draw" && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      return json(await startDraw(env, payload.order_name), 200, origin);
     }
-    const resultMatch = url.pathname.match(/^\/api\/results\/(split|parts)$/);
-    if (resultMatch && request.method === "GET") return json(await workflowResult(env, resultMatch[1]), 200, origin);
+    if (url.pathname === "/api/status" && request.method === "GET") {
+      const [split, parts, draw] = await Promise.all([workflowStatus(env, "split"), workflowStatus(env, "parts"), drawStatus(env)]);
+      return json({ split, parts, draw }, 200, origin);
+    }
+    const resultMatch = url.pathname.match(/^\/api\/results\/(split|parts|draw)$/);
+    if (resultMatch && request.method === "GET") {
+      return json(resultMatch[1] === "draw" ? await drawResult(env) : await workflowResult(env, resultMatch[1]), 200, origin);
+    }
     if (url.pathname === "/api/config" && request.method === "GET") return json(await getConfig(env), 200, origin);
     if (url.pathname === "/api/config" && request.method === "POST") {
       try {
