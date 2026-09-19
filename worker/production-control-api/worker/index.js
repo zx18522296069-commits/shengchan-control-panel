@@ -103,7 +103,8 @@ function drawBaseUrl(env) {
 }
 
 async function drawApi(env, path, options = {}) {
-  const headers = { "content-type": "application/json", ...(options.headers || {}) };
+  const headers = { ...(options.headers || {}) };
+  if (!(options.body instanceof FormData)) headers["content-type"] = "application/json";
   if (env.DRAW_API_TOKEN) headers.authorization = `Bearer ${env.DRAW_API_TOKEN}`;
   const response = await fetch(`${drawBaseUrl(env)}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
@@ -158,6 +159,32 @@ async function startDraw(env, orderName) {
     job_id: job.id,
     order_name: job.order_name || name,
     draw_status: job.status || "queued",
+  };
+}
+
+async function startDrawUpload(env, request) {
+  const incoming = await request.formData();
+  const orderName = String(incoming.get("order_name") || "").trim();
+  if (!orderName) throw Object.assign(new Error("画图订单名称不能为空"), { status: 422 });
+
+  const files = incoming.getAll("files").filter((item) => item instanceof File);
+  if (!files.length) throw Object.assign(new Error("没有收到上传文件"), { status: 422 });
+
+  const form = new FormData();
+  form.append("order_name", orderName);
+  for (const file of files) form.append("files", file, file.name);
+
+  const job = await drawApi(env, "/api/jobs/upload", {
+    method: "POST",
+    body: form,
+  });
+  return {
+    status: "requested",
+    task: "draw",
+    job_id: job.id,
+    order_name: job.order_name || orderName,
+    draw_status: job.status || "queued",
+    uploaded_file_count: job.uploaded_file_count || files.length,
   };
 }
 
@@ -807,6 +834,9 @@ async function handle(request, env) {
     if (url.pathname === "/api/run/draw" && request.method === "POST") {
       const payload = await request.json().catch(() => ({}));
       return json(await startDraw(env, payload.order_name), 200, origin);
+    }
+    if (url.pathname === "/api/run/draw/upload" && request.method === "POST") {
+      return json(await startDrawUpload(env, request), 200, origin);
     }
     if (url.pathname === "/api/status" && request.method === "GET") {
       const [split, parts, draw] = await Promise.all([workflowStatus(env, "split"), workflowStatus(env, "parts"), drawStatus(env)]);
