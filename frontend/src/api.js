@@ -159,6 +159,17 @@ export async function getResult(task) {
   return task === 'parts' ? normalizePartsResult(payload) : payload;
 }
 
+export function getDrawReview(jobId) {
+  return request(`/api/draw/review/${encodeURIComponent(jobId)}`);
+}
+
+export function markDrawReviewPass(jobId, fingerprint, reviewer = '控制台人工复核') {
+  return request(
+    `/api/draw/review/${encodeURIComponent(jobId)}/${encodeURIComponent(fingerprint)}/pass`,
+    { method: 'POST', body: JSON.stringify({ reviewer }) },
+  );
+}
+
 export function getConfig() {
   return request('/api/config');
 }
