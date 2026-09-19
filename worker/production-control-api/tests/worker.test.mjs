@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import worker, { duePartsSlots, runSchedulerTick } from "../worker/index.js";
 
-const env = { CONTROL_PANEL_KEY: "test-key", GITHUB_TOKEN: "test-token" };
+const env = {
+  CONTROL_PANEL_KEY: "test-key",
+  GITHUB_TOKEN: "test-token",
+  DRAW_API_BASE_URL: "https://draw.example",
+  DRAW_API_TOKEN: "draw-token",
+};
 const origin = "https://zx18522296069-commits.github.io";
 
 function request(path, init = {}) {
@@ -27,6 +32,41 @@ const calls = [];
 const originalFetch = global.fetch;
 global.fetch = async (url, init = {}) => {
   calls.push({ url: String(url), init });
+  if (String(url) === "https://draw.example/api/jobs/drive") {
+    assert.equal(init.headers.authorization, "Bearer draw-token");
+    return Response.json({
+      id: "draw-job-1",
+      order_name: "159.26-08-31 YT27-2400Z-1004",
+      source: "drive",
+      status: "queued",
+      created_at: "2026-09-19T16:00:00Z",
+      updated_at: "2026-09-19T16:00:00Z",
+      steps: [],
+      alerts: [],
+    });
+  }
+  if (String(url) === "https://draw.example/api/jobs/latest") {
+    assert.equal(init.headers.authorization, "Bearer draw-token");
+    return Response.json({
+      id: "draw-job-1",
+      order_name: "159.26-08-31 YT27-2400Z-1004",
+      source: "drive",
+      status: "completed",
+      created_at: "2026-09-19T16:00:00Z",
+      updated_at: "2026-09-19T16:20:00Z",
+      steps: [
+        { status: "ok", text: "读取输入完成" },
+        { status: "ok", text: "DXF生成完成" },
+        { status: "ok", text: "真实核对完成" },
+        { status: "ok", text: "汇总/预览/排版完成" },
+        { status: "ok", text: "ZIP终检完成" },
+        { status: "ok", text: "Drive交付完成" },
+      ],
+      alerts: [],
+      download_url: "/download/draw-job-1",
+      drive_url: "https://drive.example/order",
+    });
+  }
   if (String(url).includes("/dispatches")) return new Response(null, { status: 204 });
   if (String(url).includes("/actions/workflows/") && String(url).includes("/runs?")) {
     return Response.json({ workflow_runs: [{
@@ -71,9 +111,29 @@ assert.deepEqual(partsRunBody.inputs, {
   scheduled_for: "",
 });
 
+const drawRun = await worker.fetch(request("/api/run/draw", {
+  method: "POST",
+  body: JSON.stringify({ order_name: "159.26-08-31 YT27-2400Z-1004" }),
+}), env);
+assert.equal(drawRun.status, 200);
+const drawRunPayload = await drawRun.json();
+assert.equal(drawRunPayload.status, "requested");
+assert.equal(drawRunPayload.job_id, "draw-job-1");
+
 const status = await worker.fetch(request("/api/status"), env);
 assert.equal(status.status, 200);
-assert.deepEqual(Object.keys(await status.json()).sort(), ["parts", "split"]);
+const statusPayload = await status.json();
+assert.deepEqual(Object.keys(statusPayload).sort(), ["draw", "parts", "split"]);
+assert.equal(statusPayload.draw.status, "success");
+assert.equal(statusPayload.draw.job_id, "draw-job-1");
+
+const drawResult = await worker.fetch(request("/api/results/draw"), env);
+assert.equal(drawResult.status, 200);
+const drawPayload = await drawResult.json();
+assert.equal(drawPayload.status, "success");
+assert.deepEqual(drawPayload.completion, { percent: 100, completed: 6, total: 6, unit: "个阶段" });
+assert.equal(drawPayload.links.length, 2);
+assert.match(drawPayload.links[0].url, /draw\.example\/download\/draw-job-1$/);
 
 const result = await worker.fetch(request("/api/results/parts"), env);
 assert.equal(result.status, 200);
