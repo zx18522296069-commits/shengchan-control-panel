@@ -261,6 +261,39 @@ function DrawReview({ result }) {
   );
 }
 
+function DrawIssues({ result }) {
+  const issues = Array.isArray(result?.issues) ? result.issues : [];
+  if (!issues.length) {
+    return (
+      <section className="result-block draw-issue-block clear">
+        <div className="result-block-title"><h3>异常图纸</h3><span>0</span></div>
+        <p className="empty-result">当前没有需要处理的异常图纸。</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="result-block draw-issue-block">
+      <div className="result-block-title"><h3>异常图纸</h3><span>{issues.length}</span></div>
+      <div className="draw-issue-list">
+        {issues.map((item, index) => (
+          <article className="draw-issue-row" key={`${item.title || 'issue'}-${index}`}>
+            <div>
+              <strong>{item.title || '未命名图纸'}</strong>
+              <span>{item.record_status || '需要复核'}</span>
+            </div>
+            <p>{item.cause || item.reason || '未提供异常原因'}</p>
+            <small>{item.action || '核对图纸后重新处理该异常项。'}</small>
+          </article>
+        ))}
+      </div>
+      <button className="draw-rerun-button" type="button" disabled title="异常项重跑后端尚未接入">
+        只重新处理异常项 · 待接入
+      </button>
+    </section>
+  );
+}
+
 function ResultPanel({ task, result, loading, error, onClose }) {
   const meta = TASKS[task];
   const defaultCompletion = { percent: 0, completed: 0, total: 0, unit: task === 'split' ? '个图纸文件' : '张板材' };
@@ -325,7 +358,12 @@ function ResultPanel({ task, result, loading, error, onClose }) {
 
             <div className="progress-track" aria-label={`完成度 ${shownCompletion.percent}%`}><span style={{ width: `${shownCompletion.percent}%` }} /></div>
 
-            {task === 'parts' ? <PartsResults result={result} /> : task === 'split' ? <SplitResults result={result} /> : task === 'draw' ? <DrawReview result={result} /> : (
+            {task === 'parts' ? <PartsResults result={result} /> : task === 'split' ? <SplitResults result={result} /> : task === 'draw' ? (
+              <>
+                <DrawReview result={result} />
+                <DrawIssues result={result} />
+              </>
+            ) : (
               <section className="result-block issues-block">
                 <div className="result-block-title"><h3>未拆出板材</h3><span>{boardRows.length}</span></div>
                 {boardRows.length ? (
@@ -443,7 +481,11 @@ function DrawWorkbench({
           <h2>PDF → DXF 一键执行</h2>
           <p className="draw-subtitle">选订单，点一次开始；后续按缓存、DXF回读、验收预览、人工复核和ZIP交付顺序执行。</p>
         </div>
-        <span className={`badge ${state.tone}`}><span className="status-dot" />{state.text}</span>
+        <div className="draw-live-meta">
+          <span className={`badge ${state.tone}`}><span className="status-dot" />{state.text}</span>
+          <span className="draw-job-id">任务ID：{drawStatus?.job_id || '—'}</span>
+          <span className="draw-job-order">{drawStatus?.order_name || '尚未创建画图任务'}</span>
+        </div>
       </div>
 
       <div className="draw-source-grid">
@@ -514,6 +556,18 @@ function DrawWorkbench({
             );
           })}
         </div>
+      </div>
+
+      <div className="draw-quick-actions" aria-label="画图快捷操作">
+        <button type="button" className="draw-quick primary" onClick={onOpenResult}>
+          查看 DXF 验收 / 运行结果
+        </button>
+        <button type="button" className="draw-quick" disabled title="异常项重跑后端尚未接入">
+          只重跑异常项 · 待接入
+        </button>
+        <button type="button" className="draw-quick" disabled title="最终ZIP生成后会在运行结果中提供真实下载链接">
+          下载最终 ZIP · 完成后开放
+        </button>
       </div>
 
       <div className="draw-workbench-footer">
