@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, runDraw, runParts, runSplit, setControlKey } from './api';
+import { getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, runDraw, runDrawUpload, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 import SplitResults, { normalizeSplitResults } from './SplitResults';
 
@@ -464,7 +464,7 @@ function DrawWorkbench({
     : source === 'drive'
       ? `Google Drive · ${orderName.trim()}`
       : '尚未选择输入来源';
-  const canStart = source === 'drive' && !running;
+  const canStart = source !== 'empty' && !running;
   const phaseStatus = Array.isArray(drawStatus?.steps) ? drawStatus.steps : [];
   const metrics = [
     ['PDF', drawStatus?.pdf_total ?? '—'],
@@ -513,7 +513,7 @@ function DrawWorkbench({
             disabled={Boolean(running)}
             onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
           />
-          <span className="draw-source-note">{hasFiles ? `已选择 ${files.length} 个文件` : '上传执行接口正在接线，界面先保留'}</span>
+          <span className="draw-source-note">{hasFiles ? `已选择 ${files.length} 个文件；执行时上传优先` : '支持 ZIP / PDF / Excel/BOM'}</span>
         </label>
       </div>
 
@@ -527,9 +527,9 @@ function DrawWorkbench({
           type="button"
           disabled={!canStart}
           onClick={onStart}
-          title={source === 'upload' ? '本地上传后端尚未接通' : !hasOrder ? '请先填写订单文件夹名' : ''}
+          title={source === 'empty' ? '请先上传文件或填写订单文件夹名' : ''}
         >
-          {running === 'draw' ? '正在提交…' : source === 'upload' ? '上传接口待接入' : '开始画图'}
+          {running === 'draw' ? '正在提交…' : '开始画图'}
         </button>
       </div>
 
@@ -658,10 +658,8 @@ function App() {
   async function startDraw() {
     const orderName = drawOrder.trim();
     if (drawFiles.length > 0) {
-      setNotice({
-        tone: 'failed',
-        text: `已选择 ${drawFiles.length} 个上传文件：上传优先，不会读取网盘输入框。上传执行后端尚未接入，当前不提交任务。`,
-      });
+      const uploadOrderName = orderName || drawFiles[0]?.name?.replace(/\.[^.]+$/, '') || '本地上传画图任务';
+      await execute('draw', () => runDrawUpload(uploadOrderName, drawFiles));
       return;
     }
     if (!orderName) {
