@@ -41,3 +41,21 @@
 - `CONTROL_PANEL_KEY`：同事进入页面时使用的内部口令
 
 > 不得把 `GITHUB_TOKEN` 或 `CONTROL_PANEL_KEY` 写入仓库或前端构建变量。
+
+
+## 画图任务正式接口
+
+“画图”不再走 GitHub Actions 长任务。控制台 Worker 通过服务器到服务器接口调用 pdf-dxf-huatu 的 Cloud Run API。
+
+线上 Worker 需要额外环境变量：
+
+- DRAW_API_BASE_URL：pdf-dxf-api 的 Cloud Run URL；
+- DRAW_API_TOKEN：与画图服务 Secret Manager 中的 pdf-dxf-api-token 相同。
+
+浏览器只把订单名提交给控制台 Worker，不接触 DRAW_API_TOKEN。
+
+固定链路：
+
+前端画图按钮 → production-control-api → pdf-dxf-api → Cloud Run Job → 持久缓存/checkpoint → PDF↔DXF验收 → ZIP/Drive
+
+画图结果页支持“原 PDF ↔ 最终 DXF 验收预览”左右对照；人工确认 PASS 后写入绑定 source SHA、DXF SHA 和 generation fingerprint 的真实复核证据。
