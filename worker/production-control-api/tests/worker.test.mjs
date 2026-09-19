@@ -45,6 +45,24 @@ global.fetch = async (url, init = {}) => {
       alerts: [],
     });
   }
+  if (String(url) === "https://draw.example/api/jobs/upload") {
+    assert.equal(init.headers.authorization, "Bearer draw-token");
+    assert.ok(init.body instanceof FormData);
+    const uploadFiles = init.body.getAll("files");
+    assert.equal(uploadFiles.length, 1);
+    assert.equal(init.body.get("order_name"), "本地159");
+    return Response.json({
+      id: "draw-job-upload",
+      order_name: "本地159",
+      source: "upload",
+      status: "queued",
+      uploaded_file_count: 1,
+      created_at: "2026-09-19T16:01:00Z",
+      updated_at: "2026-09-19T16:01:00Z",
+      steps: [],
+      alerts: [],
+    });
+  }
   if (String(url) === "https://draw.example/api/jobs/latest") {
     assert.equal(init.headers.authorization, "Bearer draw-token");
     return Response.json({
@@ -119,6 +137,19 @@ assert.equal(drawRun.status, 200);
 const drawRunPayload = await drawRun.json();
 assert.equal(drawRunPayload.status, "requested");
 assert.equal(drawRunPayload.job_id, "draw-job-1");
+
+const uploadForm = new FormData();
+uploadForm.append("order_name", "本地159");
+uploadForm.append("files", new File(["pdf"], "159.pdf", { type: "application/pdf" }));
+const uploadRun = await worker.fetch(request("/api/run/draw/upload", {
+  method: "POST",
+  body: uploadForm,
+}), env);
+assert.equal(uploadRun.status, 200);
+const uploadPayload = await uploadRun.json();
+assert.equal(uploadPayload.status, "requested");
+assert.equal(uploadPayload.job_id, "draw-job-upload");
+assert.equal(uploadPayload.uploaded_file_count, 1);
 
 const status = await worker.fetch(request("/api/status"), env);
 assert.equal(status.status, 200);
