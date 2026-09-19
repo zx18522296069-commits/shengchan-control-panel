@@ -63,6 +63,17 @@ global.fetch = async (url, init = {}) => {
       alerts: [],
     });
   }
+  if (String(url) === "https://draw.example/api/jobs/draw-job-1/rerun-issues") {
+    assert.equal(init.headers.authorization, "Bearer draw-token");
+    return Response.json({
+      id: "draw-job-rerun",
+      parent_job_id: "draw-job-1",
+      order_name: "159.26-08-31 YT27-2400Z-1004",
+      source: "drive",
+      status: "queued",
+      retry_mode: "issues_only",
+    });
+  }
   if (String(url) === "https://draw.example/api/jobs/latest") {
     assert.equal(init.headers.authorization, "Bearer draw-token");
     return Response.json({
@@ -150,6 +161,17 @@ const uploadPayload = await uploadRun.json();
 assert.equal(uploadPayload.status, "requested");
 assert.equal(uploadPayload.job_id, "draw-job-upload");
 assert.equal(uploadPayload.uploaded_file_count, 1);
+
+const rerunResponse = await worker.fetch(request("/api/run/draw/rerun-issues", {
+  method: "POST",
+  body: JSON.stringify({ job_id: "draw-job-1" }),
+}), env);
+assert.equal(rerunResponse.status, 200);
+const rerunPayload = await rerunResponse.json();
+assert.equal(rerunPayload.status, "requested");
+assert.equal(rerunPayload.job_id, "draw-job-rerun");
+assert.equal(rerunPayload.parent_job_id, "draw-job-1");
+assert.equal(rerunPayload.retry_mode, "issues_only");
 
 const status = await worker.fetch(request("/api/status"), env);
 assert.equal(status.status, 200);
