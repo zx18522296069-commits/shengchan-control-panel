@@ -181,3 +181,254 @@ input, select { width: 100%; min-height: 44px; padding: 9px 11px; color: #edf5ff
     height: 420px;
   }
 }
+
+
+/* Drawing production workbench */
+.draw-workbench {
+  margin-top: 26px;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(20, 50, 84, .9), rgba(10, 25, 44, .94)),
+    #0b1d31;
+  border: 1px solid #315a84;
+  border-radius: 20px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, .24);
+}
+.draw-workbench-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+.draw-workbench-head h2 { font-size: 1.65rem; }
+.draw-subtitle {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: #9eb5cf;
+  line-height: 1.65;
+}
+.draw-source-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 14px;
+  margin-top: 22px;
+}
+.draw-source-card {
+  position: relative;
+  min-height: 184px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(6, 18, 32, .62);
+  border: 1px solid #2b4f73;
+  border-radius: 15px;
+  cursor: default;
+}
+.draw-source-card.selected {
+  border-color: #5aa2f1;
+  box-shadow: inset 0 0 0 1px rgba(90, 162, 241, .22);
+}
+.draw-source-number {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: #9fcaff;
+  background: #173653;
+  border: 1px solid #315c82;
+  border-radius: 8px;
+  font-size: .8rem;
+  font-weight: 900;
+}
+.draw-source-title {
+  margin-top: 2px;
+  color: #f1f7ff;
+  font-size: 1.03rem;
+  font-weight: 850;
+}
+.draw-source-desc {
+  min-height: 38px;
+  color: #8fa7c1;
+  font-size: .84rem;
+  line-height: 1.5;
+}
+.draw-source-card input { margin-top: auto; }
+.draw-source-note {
+  color: #7f97b0;
+  font-size: .78rem;
+}
+.draw-command-bar {
+  margin-top: 14px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  background: rgba(6, 17, 30, .72);
+  border: 1px solid #284866;
+  border-radius: 13px;
+}
+.draw-source-current {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.draw-source-current span {
+  color: #738ca7;
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.draw-source-current strong {
+  overflow: hidden;
+  color: #eaf4ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-start-button {
+  min-width: 178px;
+  min-height: 48px;
+  padding: 0 22px;
+  color: white;
+  background: linear-gradient(180deg, #338cf2, #1f6fcf);
+  border: 1px solid #4e9cf1;
+  border-radius: 11px;
+  cursor: pointer;
+  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(21, 105, 205, .22);
+}
+.draw-start-button:disabled {
+  color: #70869f;
+  background: #14283d;
+  border-color: #2a435d;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.draw-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.draw-metric {
+  padding: 14px 15px;
+  display: grid;
+  gap: 5px;
+  background: rgba(8, 23, 40, .72);
+  border: 1px solid #284765;
+  border-radius: 12px;
+}
+.draw-metric span {
+  color: #7890aa;
+  font-size: .78rem;
+}
+.draw-metric strong {
+  color: #f0f7ff;
+  font-size: 1.35rem;
+}
+.draw-stage-panel {
+  margin-top: 14px;
+  padding: 16px;
+  background: rgba(7, 20, 35, .72);
+  border: 1px solid #294b6c;
+  border-radius: 14px;
+}
+.draw-stage-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.draw-stage-grid {
+  margin-top: 13px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.draw-stage {
+  min-height: 78px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #0f253c;
+  border: 1px solid #29445e;
+  border-radius: 11px;
+}
+.draw-stage.ok {
+  border-color: rgba(51, 214, 159, .45);
+  background: rgba(24, 89, 69, .24);
+}
+.draw-stage.wait, .draw-stage.running {
+  border-color: rgba(255, 196, 77, .45);
+  background: rgba(94, 68, 20, .2);
+}
+.draw-stage.error {
+  border-color: rgba(255, 107, 121, .5);
+  background: rgba(83, 29, 41, .25);
+}
+.draw-stage-index {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  color: #82b7ff;
+  background: #18334f;
+  border-radius: 8px;
+  font-size: .72rem;
+  font-weight: 900;
+}
+.draw-stage div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.draw-stage strong {
+  color: #eaf3ff;
+  font-size: .86rem;
+}
+.draw-stage small {
+  overflow: hidden;
+  color: #7f96af;
+  font-size: .75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-workbench-footer {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  color: #758da7;
+  font-size: .77rem;
+  line-height: 1.5;
+}
+.secondary-actions {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 18px;
+}
+.secondary-actions .action-card {
+  min-height: 178px;
+}
+.secondary-actions .action-title {
+  margin-top: 20px;
+}
+
+
+@media (max-width: 900px) {
+  .draw-workbench-head,
+  .draw-command-bar,
+  .draw-workbench-footer { align-items: stretch; flex-direction: column; }
+  .draw-source-grid { grid-template-columns: 1fr; }
+  .draw-metrics { grid-template-columns: repeat(2, 1fr); }
+  .draw-stage-grid { grid-template-columns: repeat(2, 1fr); }
+  .draw-start-button { width: 100%; }
+}
+@media (max-width: 620px) {
+  .draw-workbench { padding: 18px; border-radius: 16px; }
+  .draw-stage-grid, .secondary-actions { grid-template-columns: 1fr; }
+  .draw-stage { min-height: 70px; }
+}
+
