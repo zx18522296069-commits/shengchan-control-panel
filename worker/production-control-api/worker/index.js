@@ -188,6 +188,24 @@ async function startDrawUpload(env, request) {
   };
 }
 
+async function rerunDrawIssues(env, jobId) {
+  const id = String(jobId || "").trim();
+  if (!id) throw Object.assign(new Error("缺少画图任务ID"), { status: 422 });
+  const job = await drawApi(env, `/api/jobs/${encodeURIComponent(id)}/rerun-issues`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return {
+    status: "requested",
+    task: "draw",
+    job_id: job.id,
+    parent_job_id: id,
+    order_name: job.order_name,
+    draw_status: job.status || "queued",
+    retry_mode: job.retry_mode || "issues_only",
+  };
+}
+
 async function drawStatus(env) {
   const job = await latestDrawJob(env);
   return job ? drawControlStatus(job) : { task: "draw", status: "no_runs", checked_at: new Date().toISOString() };
@@ -837,6 +855,10 @@ async function handle(request, env) {
     }
     if (url.pathname === "/api/run/draw/upload" && request.method === "POST") {
       return json(await startDrawUpload(env, request), 200, origin);
+    }
+    if (url.pathname === "/api/run/draw/rerun-issues" && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      return json(await rerunDrawIssues(env, payload.job_id), 200, origin);
     }
     if (url.pathname === "/api/status" && request.method === "GET") {
       const [split, parts, draw] = await Promise.all([workflowStatus(env, "split"), workflowStatus(env, "parts"), drawStatus(env)]);
