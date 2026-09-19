@@ -105,7 +105,8 @@ function drawBaseUrl(env) {
 async function drawApi(env, path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (!(options.body instanceof FormData)) headers["content-type"] = "application/json";
-  if (env.DRAW_API_TOKEN) headers.authorization = `Bearer ${env.DRAW_API_TOKEN}`;
+  const token = String(env.DRAW_API_TOKEN || env.GITHUB_TOKEN || "").trim();
+  if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(`${drawBaseUrl(env)}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
