@@ -397,6 +397,133 @@ function taskState(task) {
   return { value, tone, text: STATUS_TEXT[value] || value };
 }
 
+
+const DRAW_STAGES = [
+  '读取输入',
+  'PDF解析 / 缓存',
+  'DXF生成',
+  'DXF验收预览',
+  '人工复核',
+  '汇总 / 排版 / ZIP',
+];
+
+function DrawWorkbench({
+  orderName,
+  files,
+  running,
+  drawStatus,
+  onOrderChange,
+  onFilesChange,
+  onStart,
+  onOpenResult,
+}) {
+  const state = taskState(drawStatus);
+  const hasFiles = files.length > 0;
+  const hasOrder = Boolean(orderName.trim());
+  const source = hasFiles ? 'upload' : hasOrder ? 'drive' : 'empty';
+  const sourceText = source === 'upload'
+    ? `本地上传 · ${files.length} 个文件`
+    : source === 'drive'
+      ? `Google Drive · ${orderName.trim()}`
+      : '尚未选择输入来源';
+  const canStart = source === 'drive' && !running;
+  const phaseStatus = Array.isArray(drawStatus?.steps) ? drawStatus.steps : [];
+  const metrics = [
+    ['PDF', drawStatus?.pdf_total ?? '—'],
+    ['缓存命中', drawStatus?.cache_hits ?? '—'],
+    ['DXF完成', drawStatus?.dxf_completed ?? '—'],
+    ['异常', drawStatus?.issue_count ?? '—'],
+  ];
+
+  return (
+    <section className="draw-workbench" aria-label="画图生产任务">
+      <div className="draw-workbench-head">
+        <div>
+          <p className="eyebrow">03 画图生产任务</p>
+          <h2>PDF → DXF 一键执行</h2>
+          <p className="draw-subtitle">选订单，点一次开始；后续按缓存、DXF回读、验收预览、人工复核和ZIP交付顺序执行。</p>
+        </div>
+        <span className={`badge ${state.tone}`}><span className="status-dot" />{state.text}</span>
+      </div>
+
+      <div className="draw-source-grid">
+        <label className="draw-source-card">
+          <span className="draw-source-number">A</span>
+          <span className="draw-source-title">Google Drive 订单</span>
+          <span className="draw-source-desc">从“赵欣/来图”读取指定订单文件夹</span>
+          <input
+            type="text"
+            value={orderName}
+            onChange={(event) => onOrderChange(event.target.value)}
+            placeholder="例如：159.26-08-31 YT27-2400Z-1004"
+            disabled={Boolean(running) || hasFiles}
+          />
+        </label>
+
+        <label className={`draw-source-card upload-source ${hasFiles ? 'selected' : ''}`}>
+          <span className="draw-source-number">B</span>
+          <span className="draw-source-title">本地上传</span>
+          <span className="draw-source-desc">ZIP / PDF / Excel；上传文件存在时优先于网盘</span>
+          <input
+            type="file"
+            multiple
+            accept=".zip,.pdf,.xlsx,.xlsm,.xls"
+            disabled={Boolean(running)}
+            onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
+          />
+          <span className="draw-source-note">{hasFiles ? `已选择 ${files.length} 个文件` : '上传执行接口正在接线，界面先保留'}</span>
+        </label>
+      </div>
+
+      <div className="draw-command-bar">
+        <div className="draw-source-current">
+          <span>本次输入</span>
+          <strong>{sourceText}</strong>
+        </div>
+        <button
+          className="draw-start-button"
+          type="button"
+          disabled={!canStart}
+          onClick={onStart}
+          title={source === 'upload' ? '本地上传后端尚未接通' : !hasOrder ? '请先填写订单文件夹名' : ''}
+        >
+          {running === 'draw' ? '正在提交…' : source === 'upload' ? '上传接口待接入' : '开始画图'}
+        </button>
+      </div>
+
+      <div className="draw-metrics">
+        {metrics.map(([label, value]) => (
+          <div className="draw-metric" key={label}><span>{label}</span><strong>{value}</strong></div>
+        ))}
+      </div>
+
+      <div className="draw-stage-panel">
+        <div className="draw-stage-title">
+          <strong>执行进度</strong>
+          <button type="button" className="text-button" onClick={onOpenResult}>查看最新结果 →</button>
+        </div>
+        <div className="draw-stage-grid">
+          {DRAW_STAGES.map((label, index) => {
+            const phase = phaseStatus[index];
+            const phaseState = phase?.status || 'pending';
+            return (
+              <div className={`draw-stage ${phaseState}`} key={label}>
+                <span className="draw-stage-index">{String(index + 1).padStart(2, '0')}</span>
+                <div><strong>{label}</strong><small>{phase?.text || '等待任务数据'}</small></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="draw-workbench-footer">
+        <span>正式结果：DXF + DXF验收预览 + 汇总表 + 排版预览 + ZIP</span>
+        <span>缓存命中不会替代 PDF ↔ DXF 真实复核</span>
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [unlocked, setUnlocked] = useState(hasControlKey());
   const [passcode, setPasscode] = useState('');
@@ -516,32 +643,18 @@ function App() {
         </button>
       </header>
 
-      <section aria-label="画图输入" style={{ marginBottom: '18px', padding: '18px', marginTop: '24px', background: 'rgba(13, 29, 50, .72)', border: '1px solid #294867', borderRadius: '14px' }}>
-        <p className="eyebrow">03 画图输入</p>
-        <label className="field-label">网盘读取：订单文件夹名
-          <input type="text" value={drawOrder} onChange={(event) => setDrawOrder(event.target.value)} placeholder="例如：183.26-08-28  D53K-8000D-0828" disabled={Boolean(running)} />
-        </label>
-        <p className="refresh-note">没有上传文件时，才读取网盘“赵欣/来图”中这里指定的订单。</p>
+      <DrawWorkbench
+        orderName={drawOrder}
+        files={drawFiles}
+        running={running}
+        drawStatus={status.draw}
+        onOrderChange={setDrawOrder}
+        onFilesChange={setDrawFiles}
+        onStart={startDraw}
+        onOpenResult={() => openResult('draw')}
+      />
 
-        <label className="field-label">上传文件（优先）
-          <input
-            type="file"
-            multiple
-            accept=".zip,.pdf,.xlsx,.xlsm,.xls"
-            disabled={Boolean(running)}
-            onChange={(event) => setDrawFiles(Array.from(event.target.files || []))}
-          />
-        </label>
-        <p className="refresh-note">
-          {drawFiles.length > 0
-            ? `已选择 ${drawFiles.length} 个文件；执行时以上传文件为准，网盘输入框将被忽略。`
-            : drawOrder.trim()
-              ? `当前执行来源：Google Drive → ${drawOrder.trim()}`
-              : '当前没有输入：请上传文件或填写网盘订单；两边都为空时不执行。'}
-        </p>
-      </section>
-
-      <section className="action-grid" aria-label="任务操作">
+      <section className="action-grid secondary-actions" aria-label="其他生产任务">
         <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('split', runSplit)}>
           <span className="action-number">01</span><span className="action-title">拆图</span>
           <span className="action-description">{TASKS.split.description}</span>
@@ -551,11 +664,6 @@ function App() {
           <span className="action-number">02</span><span className="action-title">未加工更新</span>
           <span className="action-description">{TASKS.parts.description}</span>
           <span className="action-state">{running === 'parts' ? '提交中…' : '点击执行'}</span>
-        </button>
-        <button className="action-card" type="button" disabled={Boolean(running)} onClick={startDraw}>
-          <span className="action-number">03</span><span className="action-title">画图</span>
-          <span className="action-description">{TASKS.draw.description}</span>
-          <span className="action-state">{running === 'draw' ? '提交中…' : '点击执行'}</span>
         </button>
       </section>
 
