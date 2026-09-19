@@ -432,3 +432,115 @@ input, select { width: 100%; min-height: 44px; padding: 9px 11px; color: #edf5ff
   .draw-stage { min-height: 70px; }
 }
 
+
+
+/* Drawing job metadata + issue/action surfaces */
+.draw-live-meta {
+  min-width: 210px;
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  text-align: right;
+}
+.draw-job-id {
+  color: #8fb4db;
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+.draw-job-order {
+  max-width: 360px;
+  overflow: hidden;
+  color: #748ba4;
+  font-size: .74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-quick-actions {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 10px;
+}
+.draw-quick {
+  min-height: 44px;
+  padding: 10px 13px;
+  color: #b9cbe0;
+  background: #122a43;
+  border: 1px solid #315171;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 800;
+}
+.draw-quick.primary {
+  color: #eef7ff;
+  background: linear-gradient(180deg, #2e84e5, #1f6fcf);
+  border-color: #4a98eb;
+}
+.draw-quick:disabled {
+  color: #657c95;
+  background: #102237;
+  border-color: #263f59;
+  cursor: not-allowed;
+}
+.draw-issue-block {
+  border-color: rgba(255, 107, 121, .48);
+  background: rgba(83, 29, 41, .22);
+}
+.draw-issue-block.clear {
+  border-color: rgba(51, 214, 159, .35);
+  background: rgba(24, 89, 69, .16);
+}
+.draw-issue-list {
+  margin-top: 13px;
+  display: grid;
+  gap: 9px;
+}
+.draw-issue-row {
+  padding: 13px 14px;
+  display: grid;
+  gap: 7px;
+  background: rgba(6, 16, 29, .58);
+  border: 1px solid rgba(255, 107, 121, .2);
+  border-radius: 10px;
+}
+.draw-issue-row > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.draw-issue-row strong {
+  color: #f5f8fc;
+  font-size: .92rem;
+}
+.draw-issue-row div span {
+  flex: 0 0 auto;
+  color: #ff9ca6;
+  font-size: .76rem;
+  font-weight: 800;
+}
+.draw-issue-row p {
+  margin: 0;
+  color: #c2d0df;
+  line-height: 1.55;
+}
+.draw-issue-row small {
+  color: #8196ad;
+  line-height: 1.5;
+}
+.draw-rerun-button {
+  margin-top: 12px;
+  width: 100%;
+  min-height: 42px;
+  color: #687f97;
+  background: #11253a;
+  border: 1px solid #2a435c;
+  border-radius: 9px;
+  cursor: not-allowed;
+  font-weight: 800;
+}
+@media (max-width: 900px) {
+  .draw-live-meta { justify-items: start; text-align: left; }
+  .draw-quick-actions { grid-template-columns: 1fr; }
+}
