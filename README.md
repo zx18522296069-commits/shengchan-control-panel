@@ -2,7 +2,7 @@
 
 面向车间同事的简洁操作入口，集中控制三个生产任务：
 
-- 画图：PDF 转 DXF 接口预留
+- 画图：触发 `pdf-dxf-huatu` 的正式 GitHub Actions 工作流
 - 拆图：触发 `tuzhichaifen` 的正式生产工作流
 - 未加工更新：触发 `weijiagong-lingjian-guidang` 的正式生产工作流
 
@@ -45,17 +45,10 @@
 
 ## 画图任务正式接口
 
-“画图”不再走 GitHub Actions 长任务。控制台 Worker 通过服务器到服务器接口调用 pdf-dxf-huatu 的 Cloud Run API。
-
-线上 Worker 需要额外环境变量：
-
-- DRAW_API_BASE_URL：pdf-dxf-api 的 Cloud Run URL；
-- DRAW_API_TOKEN：与画图服务 Secret Manager 中的 pdf-dxf-api-token 相同。
-
-浏览器只把订单名提交给控制台 Worker，不接触 DRAW_API_TOKEN。
+“画图”使用现有 GitHub Actions 执行，不依赖 Cloud Run、Cloud Build 或 Artifact Registry。
 
 固定链路：
 
-前端画图按钮 → production-control-api → pdf-dxf-api → Cloud Run Job → 持久缓存/checkpoint → PDF↔DXF验收 → ZIP/Drive
+前端画图按钮 → production-control-api → GitHub API workflow_dispatch → pdf-dxf-huatu/draw.yml → Google Drive 读取订单 → PDF→DXF 正式处理 → Actions artifact / Google Drive
 
-画图结果页支持“原 PDF ↔ 最终 DXF 验收预览”左右对照；人工确认 PASS 后写入绑定 source SHA、DXF SHA 和 generation fingerprint 的真实复核证据。
+当前 Actions 模式只支持从 Google Drive 按订单名执行。本地文件上传、异常项单独复跑和网页内人工复核依赖常驻任务 API，暂不在此模式中启用。画图规则、正式复核门控和 Drive 正式交付条件保持不变。
