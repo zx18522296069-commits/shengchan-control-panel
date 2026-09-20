@@ -9,6 +9,13 @@ export function setControlKey(value) {
   else window.sessionStorage.removeItem('control-panel-key');
 }
 
+function notifyUnauthorized(message) {
+  setControlKey('');
+  window.dispatchEvent(new CustomEvent('control-panel-unauthorized', {
+    detail: { message: message || '操作口令已失效，请重新登录' },
+  }));
+}
+
 async function request(path, options = {}) {
   let response;
   try {
@@ -29,6 +36,7 @@ async function request(path, options = {}) {
     const message = response.status === 404 && /^not found$/i.test(String(rawMessage).trim())
       ? '控制服务版本未同步：当前线上后端缺少这个接口，请重新部署 production-control-api'
       : rawMessage;
+    if (response.status === 401) notifyUnauthorized(message);
     const error = new Error(message);
     error.status = response.status;
     throw error;
@@ -55,6 +63,7 @@ async function requestMultipart(path, formData) {
     const message = response.status === 404 && /^not found$/i.test(String(rawMessage).trim())
       ? '控制服务版本未同步：当前线上后端缺少这个接口，请重新部署 production-control-api'
       : rawMessage;
+    if (response.status === 401) notifyUnauthorized(message);
     const error = new Error(message);
     error.status = response.status;
     throw error;
