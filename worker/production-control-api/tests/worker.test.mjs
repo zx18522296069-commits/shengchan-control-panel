@@ -21,12 +21,12 @@ function encoded(value) {
 const health = await worker.fetch(new Request("https://api.example/"), env);
 assert.equal(health.status, 200);
 const healthPayload = await health.json();
-assert.equal(healthPayload.revision, "2026-09-20.3");
+assert.equal(healthPayload.revision, "2026-09-20.4");
 
 const meta = await worker.fetch(new Request("https://api.example/api/meta"), env);
 assert.equal(meta.status, 200);
 const metaPayload = await meta.json();
-assert.equal(metaPayload.revision, "2026-09-20.3");
+assert.equal(metaPayload.revision, "2026-09-20.4");
 assert.ok(metaPayload.routes.includes("POST /api/run/split"));
 
 const denied = await worker.fetch(request("/api/status", {
@@ -94,14 +94,13 @@ assert.deepEqual(partsRunBody.inputs, {
 
 const drawRun = await worker.fetch(request("/api/run/draw", {
   method: "POST",
-  body: JSON.stringify({ order_name: "159.26-08-31 YT27-2400Z-1004" }),
+  body: JSON.stringify({ order_name: "159" }),
 }), env);
-assert.equal(drawRun.status, 200);
+assert.equal(drawRun.status, 422);
 const drawRunPayload = await drawRun.json();
-assert.equal(drawRunPayload.status, "requested");
-assert.equal(drawRunPayload.order_name, "159.26-08-31 YT27-2400Z-1004");
-assert.match(calls[2].url, /pdf-dxf-huatu\/actions\/workflows\/draw\.yml\/dispatches$/);
-assert.deepEqual(JSON.parse(calls[2].init.body).inputs, { order_name: "159.26-08-31 YT27-2400Z-1004" });
+assert.match(drawRunPayload.detail, /ChatGPT Chat模式/);
+assert.match(drawRunPayload.detail, /159/);
+assert.ok(!calls.some((item) => item.url.includes("/pdf-dxf-huatu/actions/workflows/") && item.url.endsWith("/dispatches")));
 
 const uploadForm = new FormData();
 uploadForm.append("order_name", "本地159");
@@ -128,9 +127,9 @@ const statusPayload = await status.json();
 assert.deepEqual(Object.keys(statusPayload).sort(), ["draw", "parts", "split"]);
 assert.equal(statusPayload.draw.status, "success");
 assert.equal(statusPayload.draw.run_id, 123);
-const drawStatusCall = calls.find((item) => item.url.includes("/pdf-dxf-huatu/actions/workflows/draw.yml/runs?"));
+const drawStatusCall = calls.find((item) => item.url.includes("/pdf-dxf-huatu/actions/workflows/chat-draw.yml/runs?"));
 assert.ok(drawStatusCall);
-assert.match(drawStatusCall.url, /event=workflow_dispatch/);
+assert.doesNotMatch(drawStatusCall.url, /event=workflow_dispatch/);
 
 const drawResult = await worker.fetch(request("/api/results/draw"), env);
 assert.equal(drawResult.status, 200);
@@ -150,7 +149,7 @@ global.fetch = async (url) => {
   if (target.includes("/pdf-dxf-huatu/actions/workflows/") && target.includes("/runs?")) {
     return Response.json({ workflow_runs: [{
       id: 130, run_number: 18, status: "in_progress", conclusion: null,
-      event: "workflow_dispatch", updated_at: "2026-09-20T06:30:00Z", html_url: "https://example.test/run/130",
+      event: "push", updated_at: "2026-09-20T06:30:00Z", html_url: "https://example.test/run/130",
     }] });
   }
   if (target.includes("/actions/runs/130/jobs")) return Response.json({ jobs: [{ id: 459, name: "draw" }] });
