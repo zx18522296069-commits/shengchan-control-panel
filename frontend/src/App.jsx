@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getConfig, getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, rerunDrawIssues, runDraw, runDrawUpload, runParts, runSplit, setControlKey } from './api';
+import { getConfig, getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 import SplitResults, { normalizeSplitResults } from './SplitResults';
 
@@ -161,154 +161,32 @@ function PartsResults({ result }) {
   );
 }
 
-function DrawReview({ result }) {
-  const [review, setReview] = useState(null);
-  const [loading, setLoading] = useState(Boolean(result?.job_id));
-  const [error, setError] = useState('');
-  const [index, setIndex] = useState(0);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!result?.job_id) return;
-    setLoading(true);
-    setError('');
-    try {
-      const payload = await getDrawReview(result.job_id);
-      setReview(payload);
-      setIndex((value) => Math.min(value, Math.max(0, (payload.items?.length || 1) - 1)));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [result?.job_id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (!result?.job_id) return <p className="empty-result">当前画图任务没有验收任务编号。</p>;
-  if (loading) return <div className="result-loading">正在加载 PDF ↔ DXF 验收工作台…</div>;
-  if (error) return <div className="result-error"><strong>验收工作台读取失败</strong><span>{error}</span></div>;
-
-  const items = review?.items || [];
-  if (!items.length) return <p className="empty-result">当前没有可人工验收的 DXF 候选。</p>;
-  const item = items[index];
-  const passed = item.review_status === 'REVIEWED_PASS';
-
-  async function confirmPass() {
-    setSaving(true);
-    setError('');
-    try {
-      await markDrawReviewPass(result.job_id, item.fingerprint, '控制台人工复核');
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="draw-review">
-      <div className="draw-review-toolbar">
-        <div>
-          <p className="eyebrow">PDF ↔ DXF 真实验收</p>
-          <h3>{item.drawing_no || item.source_pdf}</h3>
-          <p>{item.variant ? '版本：' + item.variant + '　' : ''}T{item.thickness ?? '—'}　{item.quantity ?? '—'}件</p>
-        </div>
-        <div className="draw-review-count">
-          <strong>{index + 1}/{items.length}</strong>
-          <span>已确认 {review.reviewed || 0}</span>
-        </div>
-      </div>
-
-      <div className="draw-review-grid">
-        <figure>
-          <figcaption>原 PDF</figcaption>
-          <a href={item.source_image_url} target="_blank" rel="noreferrer">
-            <img src={item.source_image_url} alt={(item.drawing_no || '') + ' 原PDF'} />
-          </a>
-        </figure>
-        <figure>
-          <figcaption>最终 DXF 验收预览</figcaption>
-          <a href={item.preview_url} target="_blank" rel="noreferrer">
-            <img src={item.preview_url} alt={(item.drawing_no || '') + ' DXF验收图'} />
-          </a>
-        </figure>
-      </div>
-
-      <div className="draw-review-rule">
-        对照检查：外形、实际尺寸、孔径、孔中心定位、孔距、槽/缺口、R值及取中/对称/同心中心线。
-        验收图数值来自最终 DXF 几何回读，不直接复制 PDF 尺寸数字。
-      </div>
-
-      {error && <div className="result-error"><span>{error}</span></div>}
-
-      <div className="draw-review-actions">
-        <button type="button" disabled={index === 0 || saving} onClick={() => setIndex((value) => Math.max(0, value - 1))}>上一张</button>
-        <button
-          type="button"
-          className={passed ? 'review-pass confirmed' : 'review-pass'}
-          disabled={passed || saving}
-          onClick={confirmPass}
-        >
-          {passed ? '✓ 已确认 PASS' : saving ? '正在登记…' : '确认正确 PASS'}
-        </button>
-        <button type="button" disabled={index >= items.length - 1 || saving} onClick={() => setIndex((value) => Math.min(items.length - 1, value + 1))}>下一张</button>
-      </div>
-    </section>
-  );
-}
-
-function DrawIssues({ result }) {
+function DrawResultDetails({ result }) {
   const issues = Array.isArray(result?.issues) ? result.issues : [];
-  const [rerunning, setRerunning] = useState(false);
-  const [message, setMessage] = useState('');
-
-  async function rerun() {
-    if (!result?.job_id || !issues.length) return;
-    setRerunning(true);
-    setMessage('');
-    try {
-      const payload = await rerunDrawIssues(result.job_id);
-      setMessage(`已创建异常项复跑任务：${payload.job_id}`);
-    } catch (error) {
-      setMessage(`复跑失败：${error.message}`);
-    } finally {
-      setRerunning(false);
-    }
-  }
-
-  if (!issues.length) {
-    return (
-      <section className="result-block draw-issue-block clear">
-        <div className="result-block-title"><h3>异常图纸</h3><span>0</span></div>
-        <p className="empty-result">当前没有需要处理的异常图纸。</p>
-      </section>
-    );
-  }
-
   return (
-    <section className="result-block draw-issue-block">
-      <div className="result-block-title"><h3>异常图纸</h3><span>{issues.length}</span></div>
-      <div className="draw-issue-list">
-        {issues.map((item, index) => (
-          <article className="draw-issue-row" key={`${item.title || 'issue'}-${index}`}>
-            <div>
-              <strong>{item.title || '未命名图纸'}</strong>
-              <span>{item.record_status || '需要复核'}</span>
-            </div>
-            <p>{item.cause || item.reason || '未提供异常原因'}</p>
-            <small>{item.action || '核对图纸后重新处理该异常项。'}</small>
-          </article>
-        ))}
-      </div>
-      <button className="draw-rerun-button active" type="button" disabled={rerunning || !result?.job_id} onClick={rerun}>
-        {rerunning ? '正在创建复跑任务…' : `只重新处理异常项 · ${issues.length}张`}
-      </button>
-      {message && <p className="draw-rerun-message">{message}</p>}
-    </section>
+    <>
+      <section className="result-block draw-readonly-note">
+        <div className="result-block-title"><h3>画图结果</h3><span>只读</span></div>
+        <p>当前 GitHub Actions 模式只在控制台展示真实运行结果。人工 PASS、PDF ↔ DXF 在线验收和异常项单独复跑尚未接入，页面不会提供可误操作的按钮。</p>
+      </section>
+      <section className={`result-block draw-issue-block ${issues.length ? '' : 'clear'}`}>
+        <div className="result-block-title"><h3>异常图纸</h3><span>{issues.length}</span></div>
+        {issues.length ? (
+          <div className="draw-issue-list">
+            {issues.map((item, index) => (
+              <article className="draw-issue-row" key={`${item.title || 'issue'}-${index}`}>
+                <div>
+                  <strong>{item.title || '未命名图纸'}</strong>
+                  <span>{item.record_status || '需要复核'}</span>
+                </div>
+                <p>{item.cause || item.reason || '未提供异常原因'}</p>
+                <small>{item.action || '请按运行日志和原图核对后重新执行订单。'}</small>
+              </article>
+            ))}
+          </div>
+        ) : <p className="empty-result">当前没有记录到异常图纸。</p>}
+      </section>
+    </>
   );
 }
 
@@ -329,11 +207,17 @@ function ResultPanel({ task, result, loading, error, onClose }) {
     : task === 'split'
       ? { percent: splitRows.percent, completed: splitCompleted, total: splitRows.total, unit: '个图纸文件' }
       : completion;
-  const shownState = task === 'parts' && partsBoards.finished
-    ? { tone: 'success', text: '执行完成' }
-    : task === 'split' && splitRows.finished
-      ? { tone: 'success', text: '执行完成' }
-      : resultState;
+  const partsHasProblems = task === 'parts'
+    && (partsBoards.failed.length > 0 || (result?.warnings?.length || 0) > 0);
+  const splitHasProblems = task === 'split'
+    && (splitRows.failed.length > 0 || splitRows.skipped.length > 0);
+  const shownState = result?.status === 'failure'
+    ? { tone: 'failed', text: '执行失败' }
+    : task === 'parts' && partsBoards.finished
+      ? (partsHasProblems ? { tone: 'running', text: '部分完成' } : { tone: 'success', text: '执行完成' })
+      : task === 'split' && splitRows.finished
+        ? (splitHasProblems ? { tone: 'running', text: '部分完成' } : { tone: 'success', text: '执行完成' })
+        : resultState;
   const boardRows = result?.issues || [];
 
   return (
@@ -377,10 +261,7 @@ function ResultPanel({ task, result, loading, error, onClose }) {
             <div className="progress-track" aria-label={`完成度 ${shownCompletion.percent}%`}><span style={{ width: `${shownCompletion.percent}%` }} /></div>
 
             {task === 'parts' ? <PartsResults result={result} /> : task === 'split' ? <SplitResults result={result} /> : task === 'draw' ? (
-              <>
-                <DrawReview result={result} />
-                <DrawIssues result={result} />
-              </>
+              <DrawResultDetails result={result} />
             ) : (
               <section className="result-block issues-block">
                 <div className="result-block-title"><h3>未拆出板材</h3><span>{boardRows.length}</span></div>
@@ -453,6 +334,9 @@ function taskState(task) {
   return { value, tone, text: STATUS_TEXT[value] || value };
 }
 
+function isTaskActive(task) {
+  return ['in_progress', 'queued', 'requested', 'waiting'].includes(task?.status);
+}
 
 const DRAW_STAGES = [
   '读取输入',
@@ -468,6 +352,8 @@ function DrawWorkbench({
   files,
   running,
   drawStatus,
+  drawResult,
+  locked,
   onOrderChange,
   onFilesChange,
   onStart,
@@ -482,13 +368,14 @@ function DrawWorkbench({
     : source === 'drive'
       ? `Google Drive · ${orderName.trim()}`
       : '尚未选择输入来源';
-  const canStart = source !== 'empty' && !running;
-  const phaseStatus = Array.isArray(drawStatus?.steps) ? drawStatus.steps : [];
+  const canStart = source !== 'empty' && !locked;
+  const phaseStatus = Array.isArray(drawResult?.steps) ? drawResult.steps : [];
+  const completion = drawResult?.completion || {};
   const metrics = [
-    ['PDF', drawStatus?.pdf_total ?? '—'],
-    ['缓存命中', drawStatus?.cache_hits ?? '—'],
-    ['DXF完成', drawStatus?.dxf_completed ?? '—'],
-    ['异常', drawStatus?.issue_count ?? '—'],
+    ['运行编号', drawResult?.run_number ?? drawStatus?.run_number ?? '—'],
+    ['阶段完成', completion.total ? `${completion.completed || 0}/${completion.total}` : '—'],
+    ['完成度', Number.isFinite(Number(completion.percent)) ? `${Number(completion.percent)}%` : '—'],
+    ['异常', Array.isArray(drawResult?.issues) ? drawResult.issues.length : '—'],
   ];
 
   return (
@@ -501,8 +388,8 @@ function DrawWorkbench({
         </div>
         <div className="draw-live-meta">
           <span className={`badge ${state.tone}`}><span className="status-dot" />{state.text}</span>
-          <span className="draw-job-id">任务ID：{drawStatus?.job_id || '—'}</span>
-          <span className="draw-job-order">{drawStatus?.order_name || '尚未创建画图任务'}</span>
+          <span className="draw-job-id">运行ID：{drawResult?.run_id || drawStatus?.run_id || '—'}</span>
+          <span className="draw-job-order">{orderName.trim() || '最近一次正式画图运行'}</span>
         </div>
       </div>
 
@@ -516,7 +403,7 @@ function DrawWorkbench({
             value={orderName}
             onChange={(event) => onOrderChange(event.target.value)}
             placeholder="例如：159.26-08-31 YT27-2400Z-1004"
-            disabled={Boolean(running) || hasFiles}
+            disabled={Boolean(locked) || hasFiles}
           />
         </label>
 
@@ -547,7 +434,7 @@ function DrawWorkbench({
           onClick={onStart}
           title={source === 'empty' ? '请填写 Google Drive 订单文件夹名' : ''}
         >
-          {running === 'draw' ? '正在提交…' : '开始画图'}
+          {running === 'draw' ? '正在提交…' : locked ? '任务运行中' : '开始画图'}
         </button>
       </div>
 
@@ -578,7 +465,7 @@ function DrawWorkbench({
 
       <div className="draw-quick-actions" aria-label="画图快捷操作">
         <button type="button" className="draw-quick primary" onClick={onOpenResult}>
-          查看 DXF 验收 / 运行结果
+          查看画图运行结果
         </button>
         <button type="button" className="draw-quick" disabled title="异常项重跑后端尚未接入">
           只重跑异常项 · 待接入
@@ -604,6 +491,8 @@ function App() {
   const [running, setRunning] = useState('');
   const [drawOrder, setDrawOrder] = useState('');
   const [drawFiles, setDrawFiles] = useState([]);
+  const [drawDetail, setDrawDetail] = useState(null);
+  const [submittedAt, setSubmittedAt] = useState({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [resultTask, setResultTask] = useState('');
@@ -616,6 +505,34 @@ function App() {
       const data = await getStatus();
       setStatus(data || {});
       setLastRefresh(new Date());
+
+      setSubmittedAt((current) => {
+        const next = { ...current };
+        for (const [key, submitted] of Object.entries(current)) {
+          const remote = data?.[key];
+          const remoteTime = Date.parse(remote?.updated_at || remote?.run_started_at || '');
+          if (isTaskActive(remote)
+            || (Number.isFinite(remoteTime) && remoteTime >= Number(submitted) - 1000)
+            || Date.now() - Number(submitted) > 120000) {
+            delete next[key];
+          }
+        }
+        return next;
+      });
+
+      const draw = data?.draw;
+      if (draw?.run_id && !['api_error', 'no_runs', 'unknown'].includes(draw.status)) {
+        try {
+          const detail = await getResult('draw');
+          if (!detail?.run_id || detail.run_id === draw.run_id) setDrawDetail(detail);
+        } catch (detailError) {
+          if (detailError.status !== 401) {
+            setDrawDetail((current) => current?.run_id === draw.run_id ? current : null);
+          }
+        }
+      } else {
+        setDrawDetail(null);
+      }
     } catch (error) {
       const checkedAt = new Date().toISOString();
       setStatus(Object.fromEntries(
@@ -629,6 +546,22 @@ function App() {
       setLastRefresh(new Date());
       if (!quiet) setNotice({ tone: 'failed', text: error.message });
     }
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = (event) => {
+      setControlKey('');
+      setUnlocked(false);
+      setPasscode('');
+      setStatus({});
+      setDrawDetail(null);
+      setSubmittedAt({});
+      setSettingsOpen(false);
+      setResultTask('');
+      setNotice({ tone: 'failed', text: event.detail?.message || '操作口令已失效，请重新登录' });
+    };
+    window.addEventListener('control-panel-unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('control-panel-unauthorized', handleUnauthorized);
   }, []);
 
   useEffect(() => {
@@ -672,17 +605,50 @@ function App() {
 
   async function execute(key, action) {
     const name = TASKS[key].label;
+    if (submittedAt[key] || isTaskActive(status[key])) {
+      setNotice({ tone: 'running', text: `${name}任务已经在排队或运行中，请等待当前任务结束` });
+      return;
+    }
     setRunning(key);
     setNotice({ tone: 'running', text: `${name}任务正在提交…` });
     try {
-      await action();
-      setNotice({ tone: 'success', text: `${name}任务已提交，状态会自动刷新` });
+      const payload = await action();
+      const submitted = Date.now();
+      setSubmittedAt((current) => ({ ...current, [key]: submitted }));
+      setStatus((current) => ({
+        ...current,
+        [key]: {
+          ...(current[key] || {}),
+          task: key,
+          status: payload?.status || 'requested',
+          event: 'workflow_dispatch',
+          updated_at: new Date(submitted).toISOString(),
+        },
+      }));
+      setNotice({ tone: 'success', text: `${name}任务已提交，运行期间按钮会保持锁定` });
       window.setTimeout(() => refreshStatus(true), 2500);
     } catch (error) {
+      setSubmittedAt((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
       setNotice({ tone: 'failed', text: `${name}提交失败：${error.message}` });
     } finally {
       setRunning('');
     }
+  }
+
+  function logout() {
+    setControlKey('');
+    setUnlocked(false);
+    setPasscode('');
+    setStatus({});
+    setDrawDetail(null);
+    setSubmittedAt({});
+    setSettingsOpen(false);
+    setResultTask('');
+    setNotice({ tone: 'idle', text: '已退出控制台，请重新输入操作口令' });
   }
 
   async function startDraw() {
@@ -715,9 +681,14 @@ function App() {
           <p className="eyebrow">火切生产中心</p>
           <h1>生产自动化控制台</h1>
         </div>
-        <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="打开定时设置">
-          <span aria-hidden="true">⚙</span><span>定时设置</span>
-        </button>
+        <div className="topbar-actions">
+          <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="打开定时设置">
+            <span aria-hidden="true">⚙</span><span>定时设置</span>
+          </button>
+          <button className="icon-button logout-button" type="button" onClick={logout} aria-label="退出控制台">
+            <span aria-hidden="true">↩</span><span>退出</span>
+          </button>
+        </div>
       </header>
 
       <DrawWorkbench
@@ -725,6 +696,8 @@ function App() {
         files={drawFiles}
         running={running}
         drawStatus={status.draw}
+        drawResult={drawDetail}
+        locked={Boolean(running) || Boolean(submittedAt.draw) || isTaskActive(status.draw)}
         onOrderChange={setDrawOrder}
         onFilesChange={setDrawFiles}
         onStart={startDraw}
@@ -732,15 +705,15 @@ function App() {
       />
 
       <section className="action-grid secondary-actions" aria-label="其他生产任务">
-        <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('split', runSplit)}>
+        <button className="action-card" type="button" disabled={Boolean(running) || Boolean(submittedAt.split) || isTaskActive(status.split)} onClick={() => execute('split', runSplit)}>
           <span className="action-number">01</span><span className="action-title">拆图</span>
           <span className="action-description">{TASKS.split.description}</span>
-          <span className="action-state">{running === 'split' ? '提交中…' : '点击执行'}</span>
+          <span className="action-state">{running === 'split' ? '提交中…' : (submittedAt.split || isTaskActive(status.split)) ? '任务运行中' : '点击执行'}</span>
         </button>
-        <button className="action-card" type="button" disabled={Boolean(running)} onClick={() => execute('parts', runParts)}>
+        <button className="action-card" type="button" disabled={Boolean(running) || Boolean(submittedAt.parts) || isTaskActive(status.parts)} onClick={() => execute('parts', runParts)}>
           <span className="action-number">02</span><span className="action-title">未加工更新</span>
           <span className="action-description">{TASKS.parts.description}</span>
-          <span className="action-state">{running === 'parts' ? '提交中…' : '点击执行'}</span>
+          <span className="action-state">{running === 'parts' ? '提交中…' : (submittedAt.parts || isTaskActive(status.parts)) ? '任务运行中' : '点击执行'}</span>
         </button>
       </section>
 
@@ -768,6 +741,7 @@ function App() {
                   <div><dt>最后执行</dt><dd>{formatTime(status[key]?.updated_at || status[key]?.run_started_at)}</dd></div>
                   <div><dt>触发方式</dt><dd>{status[key]?.event === 'schedule' ? '定时' : status[key]?.event ? '手动' : '—'}</dd></div>
                 </dl>
+                {status[key]?.detail && <div className="status-detail">{status[key].detail}</div>}
                 <button className="result-button" type="button" onClick={() => openResult(key)}>查看运行结果 →</button>
               </article>
             );
