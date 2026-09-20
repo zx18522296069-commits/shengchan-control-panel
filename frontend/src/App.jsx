@@ -420,7 +420,7 @@ function DrawWorkbench({
     : source === 'drive'
       ? `Google Drive · 序号 ${orderName.trim()}`
       : '尚未选择输入来源';
-  const canStart = source !== 'empty' && !locked;
+  const canStart = false;
   const normalizedResult = normalizeDrawResult(drawResult, drawStatus);
   const phaseStatus = Array.isArray(normalizedResult?.steps) ? normalizedResult.steps : [];
   const completion = normalizedResult?.completion || {};
@@ -436,8 +436,8 @@ function DrawWorkbench({
       <div className="draw-workbench-head">
         <div>
           <p className="eyebrow">03 画图生产任务</p>
-          <h2>PDF → DXF 一键执行</h2>
-          <p className="draw-subtitle">选订单，点一次开始；后续按缓存、DXF回读、验收预览、人工复核和ZIP交付顺序执行。</p>
+          <h2>PDF → DXF · Chat 模式</h2>
+          <p className="draw-subtitle">画图任务改由固定 ChatGPT 对话发起；本页只查看运行状态、异常和最终结果。</p>
         </div>
         <div className="draw-live-meta">
           <span className={`badge ${state.tone}`}><span className="status-dot" />{state.text}</span>
@@ -449,8 +449,8 @@ function DrawWorkbench({
       <div className="draw-source-grid">
         <label className="draw-source-card">
           <span className="draw-source-number">A</span>
-          <span className="draw-source-title">Google Drive 订单序号</span>
-          <span className="draw-source-desc">只输入序号，自动匹配“赵欣/来图”中的唯一订单文件夹</span>
+          <span className="draw-source-title">固定 Chat 触发</span>
+          <span className="draw-source-desc">在固定画图 Chat 中只发送订单序号，例如 191</span>
           <input
             type="text"
             value={orderName}
@@ -473,23 +473,23 @@ function DrawWorkbench({
             disabled
             onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
           />
-          <span className="draw-source-note">例如输入 191，自动匹配“赵欣/来图”中以 191 开头的唯一订单文件夹</span>
+          <span className="draw-source-note">本地上传停用；Chat 会读取“赵欣/来图”并自动匹配唯一订单文件夹</span>
         </label>
       </div>
 
       <div className="draw-command-bar">
         <div className="draw-source-current">
           <span>本次输入</span>
-          <strong>{sourceText}</strong>
+          <strong>在固定 Chat 中发送纯数字序号，例如 191</strong>
         </div>
         <button
           className="draw-start-button"
           type="button"
           disabled={!canStart}
           onClick={onStart}
-          title={source === 'empty' ? '请输入订单序号，例如 191' : ''}
+          title="画图已切换为固定 ChatGPT Chat 触发"
         >
-          {running === 'draw' ? '正在提交…' : locked ? '任务运行中' : '开始画图'}
+          Chat 模式启动
         </button>
       </div>
 
