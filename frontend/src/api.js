@@ -25,7 +25,11 @@ async function request(path, options = {}) {
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.status === 'error') {
-    const error = new Error(payload.detail || payload.message || `请求失败（${response.status}）`);
+    const rawMessage = payload.detail || payload.message || `请求失败（${response.status}）`;
+    const message = response.status === 404 && /^not found$/i.test(String(rawMessage).trim())
+      ? '控制服务版本未同步：当前线上后端缺少这个接口，请重新部署 production-control-api'
+      : rawMessage;
+    const error = new Error(message);
     error.status = response.status;
     throw error;
   }
@@ -47,7 +51,11 @@ async function requestMultipart(path, formData) {
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.status === 'error') {
-    const error = new Error(payload.detail || payload.message || `请求失败（${response.status}）`);
+    const rawMessage = payload.detail || payload.message || `请求失败（${response.status}）`;
+    const message = response.status === 404 && /^not found$/i.test(String(rawMessage).trim())
+      ? '控制服务版本未同步：当前线上后端缺少这个接口，请重新部署 production-control-api'
+      : rawMessage;
+    const error = new Error(message);
     error.status = response.status;
     throw error;
   }
