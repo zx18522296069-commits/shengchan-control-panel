@@ -158,11 +158,20 @@ async function githubText(env, path) {
 async function dispatch(env, task, inputOverrides = {}) {
   const target = TASKS[task];
   const inputs = { ...target.inputs, ...inputOverrides };
-  await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/dispatches`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ref: "main", inputs }),
-  });
+  try {
+    await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/dispatches`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ref: "main", inputs }),
+    });
+  } catch (error) {
+    if (error?.status === 403 || error?.status === 404) {
+      throw Object.assign(new Error(
+        `GITHUB_TOKEN 无法触发 ${target.repo} 的 ${target.workflow}。请给该 Token 授权此仓库，并开启 Actions: Read and write。`
+      ), { status: 403 });
+    }
+    throw error;
+  }
   return { status: "requested", workflow: target.workflow, inputs };
 }
 
@@ -193,11 +202,12 @@ async function safeWorkflowStatus(env, task) {
   try {
     return await workflowStatus(env, task);
   } catch (error) {
+    const target = TASKS[task];
     return {
       task,
       status: "api_error",
-      detail: error?.status === 404
-        ? "GitHub 仓库或工作流当前不可访问，请检查控制台 GITHUB_TOKEN 对目标仓库的权限"
+      detail: (error?.status === 403 || error?.status === 404)
+        ? `GITHUB_TOKEN 无法读取 ${target.repo} 的 ${target.workflow}，请检查该仓库授权和 Actions 权限`
         : (error?.message || "状态读取失败"),
       checked_at: new Date().toISOString(),
     };
