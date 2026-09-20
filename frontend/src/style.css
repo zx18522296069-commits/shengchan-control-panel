@@ -565,3 +565,39 @@ input, select { width: 100%; min-height: 44px; padding: 9px 11px; color: #edf5ff
   color: #9fc9ff;
   font-size: .82rem;
 }
+
+
+/* Control reliability surfaces */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logout-button {
+  color: #c7d5e6;
+  background: #101f33;
+}
+.status-detail {
+  margin-top: 12px;
+  padding: 10px 12px;
+  color: #ffb1ba;
+  background: rgba(125, 28, 43, .18);
+  border: 1px solid rgba(255, 107, 121, .28);
+  border-radius: 9px;
+  font-size: .8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.draw-readonly-note {
+  border-color: #355a7e;
+  background: rgba(25, 57, 88, .24);
+}
+.draw-readonly-note p {
+  margin: 12px 0 0;
+  color: #9eb5cf;
+  line-height: 1.65;
+}
+@media (max-width: 760px) {
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .icon-button { padding: 10px 12px; }
+}
