@@ -21,12 +21,12 @@ function encoded(value) {
 const health = await worker.fetch(new Request("https://api.example/"), env);
 assert.equal(health.status, 200);
 const healthPayload = await health.json();
-assert.equal(healthPayload.revision, "2026-09-20.2");
+assert.equal(healthPayload.revision, "2026-09-20.3");
 
 const meta = await worker.fetch(new Request("https://api.example/api/meta"), env);
 assert.equal(meta.status, 200);
 const metaPayload = await meta.json();
-assert.equal(metaPayload.revision, "2026-09-20.2");
+assert.equal(metaPayload.revision, "2026-09-20.3");
 assert.ok(metaPayload.routes.includes("POST /api/run/split"));
 
 const denied = await worker.fetch(request("/api/status", {
@@ -143,6 +143,31 @@ assert.equal(drawPayload.steps[5].text, "✅ ZIP交付完成");
 assert.equal(drawPayload.issue_count, 0);
 assert.equal(drawPayload.links.length, 2);
 assert.equal(drawPayload.links[1].url, "https://drive.example/order");
+
+// 运行中的画图任务没有 DRAW_RESULT_JSON 时不能误报失败，必须按阶段返回运行进度。
+global.fetch = async (url) => {
+  if (String(url).includes("/actions/workflows/") && String(url).includes("/runs?")) {
+    return Response.json({ workflow_runs: [{
+      id: 130, run_number: 18, status: "in_progress", conclusion: null,
+      event: "workflow_dispatch", updated_at: "2026-09-20T06:30:00Z", html_url: "https://example.test/run/130",
+    }] });
+  }
+  if (String(url).includes("/actions/runs/130/jobs")) return Response.json({ jobs: [{ id: 459, name: "draw" }] });
+  if (String(url).includes("/actions/jobs/459/logs")) return new Response([
+    "DRAW_STEP=0|ok|✅ 已定位订单",
+    "DRAW_STEP=1|ok|✅ PDF解析完成",
+    "DRAW_STEP=2|running|正在生成DXF",
+  ].join("\n"));
+  return Response.json({});
+};
+const runningDraw = await worker.fetch(request("/api/results/draw"), env);
+assert.equal(runningDraw.status, 200);
+const runningDrawPayload = await runningDraw.json();
+assert.equal(runningDrawPayload.status, "in_progress");
+assert.deepEqual(runningDrawPayload.completion, { percent: 33, completed: 2, total: 6, unit: "个阶段" });
+assert.equal(runningDrawPayload.issue_count, 0);
+assert.equal(runningDrawPayload.steps[2].status, "running");
+
 
 const result = await worker.fetch(request("/api/results/parts"), env);
 assert.equal(result.status, 200);
