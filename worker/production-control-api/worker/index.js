@@ -417,6 +417,15 @@ function parseSplitResult(log, latest) {
 
 function parseDrawResult(log, latest) {
   const lines = log.split(/\r?\n/).map(cleanLogLine);
+  const stepMap = new Map();
+  for (const line of lines) {
+    const match = line.match(/^DRAW_STEP=(\d+)\|([^|]+)\|(.*)$/);
+    if (!match) continue;
+    const index = Number(match[1]);
+    if (!Number.isInteger(index) || index < 0 || index > 5) continue;
+    stepMap.set(index, { status: match[2] || "pending", text: match[3] || "等待任务数据" });
+  }
+  const steps = Array.from({ length: 6 }, (_, index) => stepMap.get(index) || { status: "pending", text: "等待任务数据" });
   const encoded = lines.map((line) => line.match(/DRAW_RESULT_JSON=(\{.*\})$/)?.[1]).filter(Boolean).at(-1);
   if (!encoded) {
     const failure = fatalIssue(lines) || (latest.conclusion === "success" ? "画图运行完成，但未找到结构化结果" : "画图运行失败，请打开 GitHub 日志查看");
@@ -425,6 +434,8 @@ function parseDrawResult(log, latest) {
       completion: { percent: 0, completed: 0, total: 6, unit: "个阶段" },
       summary: [], successes: [], warnings: [],
       issues: [{ title: "画图任务", record_status: "需要检查", cause: failure, action: "打开 GitHub 运行日志核对。", reason: failure }],
+      steps,
+      issue_count: 1,
     };
   }
   let payload;
@@ -440,6 +451,8 @@ function parseDrawResult(log, latest) {
     issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : "需要复核", cause: message, action: "按提示核对后重新执行订单。", reason: message })),
     warnings: [],
     drive_url: payload.drive_url || null,
+    steps,
+    issue_count: alerts.length,
   };
 }
 
