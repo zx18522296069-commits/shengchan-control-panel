@@ -617,6 +617,16 @@ function App() {
       setStatus(data || {});
       setLastRefresh(new Date());
     } catch (error) {
+      const checkedAt = new Date().toISOString();
+      setStatus(Object.fromEntries(
+        Object.keys(TASKS).map((key) => [key, {
+          task: key,
+          status: 'api_error',
+          detail: error.message,
+          checked_at: checkedAt,
+        }]),
+      ));
+      setLastRefresh(new Date());
       if (!quiet) setNotice({ tone: 'failed', text: error.message });
     }
   }, []);
