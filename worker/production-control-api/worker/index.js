@@ -1,4 +1,5 @@
 const API_VERSION = "2022-11-28";
+const CONTROL_API_REVISION = "2026-09-20.2";
 const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
@@ -167,7 +168,8 @@ async function dispatch(env, task, inputOverrides = {}) {
 
 async function latestWorkflowRun(env, task) {
   const target = TASKS[task];
-  const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1`);
+  const eventFilter = task === "draw" ? "&event=workflow_dispatch" : "";
+  const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1${eventFilter}`);
   return payload.workflow_runs?.[0] || null;
 }
 
@@ -712,7 +714,29 @@ async function handle(request, env) {
   const origin = request.headers.get("origin") || "";
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (origin && origin !== ALLOWED_ORIGIN) return json({ detail: "来源不允许" }, 403, origin);
-  if (url.pathname === "/" && request.method === "GET") return json({ status: "ok", service: "production-control-api" }, 200, origin);
+  if (url.pathname === "/" && request.method === "GET") {
+    return json({
+      status: "ok",
+      service: "production-control-api",
+      revision: CONTROL_API_REVISION,
+    }, 200, origin);
+  }
+  if (url.pathname === "/api/meta" && request.method === "GET") {
+    return json({
+      status: "ok",
+      service: "production-control-api",
+      revision: CONTROL_API_REVISION,
+      routes: [
+        "POST /api/run/split",
+        "POST /api/run/parts",
+        "POST /api/run/draw",
+        "GET /api/status",
+        "GET /api/results/:task",
+        "GET /api/config",
+        "POST /api/config",
+      ],
+    }, 200, origin);
+  }
 
   // 调度心跳使用 GitHub OIDC，不使用浏览器控制口令。
   if (url.pathname === "/api/scheduler/tick" && request.method === "POST") {
