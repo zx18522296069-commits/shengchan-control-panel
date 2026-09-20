@@ -1,5 +1,5 @@
 const API_VERSION = "2022-11-28";
-const CONTROL_API_REVISION = "2026-09-20.2";
+const CONTROL_API_REVISION = "2026-09-20.3";
 const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
@@ -428,10 +428,23 @@ function parseDrawResult(log, latest) {
   const steps = Array.from({ length: 6 }, (_, index) => stepMap.get(index) || { status: "pending", text: "等待任务数据" });
   const encoded = lines.map((line) => line.match(/DRAW_RESULT_JSON=(\{.*\})$/)?.[1]).filter(Boolean).at(-1);
   if (!encoded) {
+    const completedSteps = steps.filter((item) => item.status === "ok").length;
+    if (latest.status && latest.status !== "completed") {
+      return {
+        status: latest.status,
+        completion: { percent: Math.round((completedSteps / 6) * 100), completed: completedSteps, total: 6, unit: "个阶段" },
+        summary: ["画图任务正在运行，阶段状态来自当前 GitHub Actions 日志"],
+        successes: [],
+        warnings: [],
+        issues: [],
+        steps,
+        issue_count: 0,
+      };
+    }
     const failure = fatalIssue(lines) || (latest.conclusion === "success" ? "画图运行完成，但未找到结构化结果" : "画图运行失败，请打开 GitHub 日志查看");
     return {
       status: latest.conclusion === "success" ? "partial" : "failure",
-      completion: { percent: 0, completed: 0, total: 6, unit: "个阶段" },
+      completion: { percent: Math.round((completedSteps / 6) * 100), completed: completedSteps, total: 6, unit: "个阶段" },
       summary: [], successes: [], warnings: [],
       issues: [{ title: "画图任务", record_status: "需要检查", cause: failure, action: "打开 GitHub 运行日志核对。", reason: failure }],
       steps,
