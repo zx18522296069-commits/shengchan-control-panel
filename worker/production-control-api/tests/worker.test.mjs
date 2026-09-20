@@ -49,7 +49,15 @@ global.fetch = async (url, init = {}) => {
     const isDraw = String(url).includes("pdf-dxf-huatu");
     return Response.json({ jobs: [{ id: isDraw ? 458 : 456, name: isDraw ? "draw" : "update" }] });
   }
-  if (String(url).includes("/actions/jobs/458/logs")) return new Response('DRAW_RESULT_JSON={"status":"completed","drive_url":"https://drive.example/order","alerts":[]}');
+  if (String(url).includes("/actions/jobs/458/logs")) return new Response([
+    "DRAW_STEP=0|ok|✅ 已定位订单",
+    "DRAW_STEP=1|ok|✅ PDF解析完成",
+    "DRAW_STEP=2|ok|✅ DXF生成完成",
+    "DRAW_STEP=3|ok|✅ DXF验收预览完成",
+    "DRAW_STEP=4|ok|✅ 人工复核通过",
+    "DRAW_STEP=5|ok|✅ ZIP交付完成",
+    'DRAW_RESULT_JSON={"status":"completed","drive_url":"https://drive.example/order","alerts":[]}',
+  ].join("\n"));
   if (String(url).includes("/actions/jobs/456/logs")) {
     return new Response([
       "2026-09-16T08:18:51Z [2026-09-16T16:18:51+08:00] INFO 发现订单原始汇总表 22 个",
@@ -129,6 +137,10 @@ assert.equal(drawResult.status, 200);
 const drawPayload = await drawResult.json();
 assert.equal(drawPayload.status, "success");
 assert.deepEqual(drawPayload.completion, { percent: 100, completed: 6, total: 6, unit: "个阶段" });
+assert.equal(drawPayload.steps.length, 6);
+assert.equal(drawPayload.steps[0].status, "ok");
+assert.equal(drawPayload.steps[5].text, "✅ ZIP交付完成");
+assert.equal(drawPayload.issue_count, 0);
 assert.equal(drawPayload.links.length, 2);
 assert.equal(drawPayload.links[1].url, "https://drive.example/order");
 
