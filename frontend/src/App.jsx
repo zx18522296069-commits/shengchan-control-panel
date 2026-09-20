@@ -341,11 +341,63 @@ function isTaskActive(task) {
 const DRAW_STAGES = [
   '读取输入',
   'PDF解析 / 缓存',
-  'DXF生成',
-  'DXF验收预览',
-  '人工复核',
-  '汇总 / 排版 / ZIP',
+  'DXF生成 / 回读',
+  '汇总 / 验收预览 / 排版',
+  'ZIP终检',
+  'Drive正式交付',
 ];
+
+function normalizeDrawResult(result, drawStatus) {
+  if (!result) return result;
+  const total = DRAW_STAGES.length;
+  const rawSteps = Array.isArray(result.steps) ? result.steps.slice(0, total) : [];
+  const steps = Array.from({ length: total }, (_, index) => {
+    const item = rawSteps[index] || {};
+    return {
+      status: String(item.status || 'pending').toLowerCase(),
+      text: item.text || '等待任务数据',
+    };
+  });
+
+  const overall = String(drawStatus?.status || result.status || 'unknown').toLowerCase();
+  const isOk = (value) => ['ok', 'success', 'completed', 'pass', 'passed'].includes(value);
+  const isPending = (value) => ['pending', 'unknown', ''].includes(value);
+  const isError = (value) => ['error', 'failed', 'failure', 'cancelled'].includes(value);
+  const issueText = result?.issues?.[0]?.reason
+    || result?.issues?.[0]?.cause
+    || result?.issues?.[0]?.detail
+    || '任务在此阶段失败';
+
+  if (['failure', 'failed', 'cancelled'].includes(overall) && !steps.some((item) => isError(item.status))) {
+    let failedIndex = -1;
+    for (let index = 0; index < steps.length; index += 1) {
+      if (!isPending(steps[index].status) && !isOk(steps[index].status)) failedIndex = index;
+    }
+    if (failedIndex < 0) {
+      const completedPrefix = steps.findIndex((item) => !isOk(item.status));
+      failedIndex = completedPrefix >= 0 ? completedPrefix : total - 1;
+    }
+    steps[failedIndex] = {
+      status: 'error',
+      text: issueText,
+    };
+  }
+
+  const completed = steps.filter((item) => isOk(item.status)).length;
+  const percent = Math.round((completed / total) * 100);
+  return {
+    ...result,
+    steps,
+    completion: {
+      ...(result.completion || {}),
+      completed,
+      total,
+      percent,
+      unit: '个阶段',
+    },
+    issue_count: Array.isArray(result.issues) ? result.issues.length : Number(result.issue_count || 0),
+  };
+}
 
 function DrawWorkbench({
   orderName,
@@ -369,13 +421,14 @@ function DrawWorkbench({
       ? `Google Drive · 序号 ${orderName.trim()}`
       : '尚未选择输入来源';
   const canStart = source !== 'empty' && !locked;
-  const phaseStatus = Array.isArray(drawResult?.steps) ? drawResult.steps : [];
-  const completion = drawResult?.completion || {};
+  const normalizedResult = normalizeDrawResult(drawResult, drawStatus);
+  const phaseStatus = Array.isArray(normalizedResult?.steps) ? normalizedResult.steps : [];
+  const completion = normalizedResult?.completion || {};
   const metrics = [
-    ['运行编号', drawResult?.run_number ?? drawStatus?.run_number ?? '—'],
+    ['运行编号', normalizedResult?.run_number ?? drawStatus?.run_number ?? '—'],
     ['阶段完成', completion.total ? `${completion.completed || 0}/${completion.total}` : '—'],
     ['完成度', Number.isFinite(Number(completion.percent)) ? `${Number(completion.percent)}%` : '—'],
-    ['异常', Array.isArray(drawResult?.issues) ? drawResult.issues.length : '—'],
+    ['异常', Array.isArray(normalizedResult?.issues) ? normalizedResult.issues.length : (normalizedResult?.issue_count ?? '—')],
   ];
 
   return (
@@ -388,7 +441,7 @@ function DrawWorkbench({
         </div>
         <div className="draw-live-meta">
           <span className={`badge ${state.tone}`}><span className="status-dot" />{state.text}</span>
-          <span className="draw-job-id">运行ID：{drawResult?.run_id || drawStatus?.run_id || '—'}</span>
+          <span className="draw-job-id">运行ID：{normalizedResult?.run_id || drawStatus?.run_id || '—'}</span>
           <span className="draw-job-order">{orderName.trim() || '最近一次正式画图运行'}</span>
         </div>
       </div>
@@ -396,8 +449,8 @@ function DrawWorkbench({
       <div className="draw-source-grid">
         <label className="draw-source-card">
           <span className="draw-source-number">A</span>
-          <span className="draw-source-title">Google Drive 订单</span>
-          <span className="draw-source-desc">从“赵欣/来图”读取指定订单文件夹</span>
+          <span className="draw-source-title">Google Drive 订单序号</span>
+          <span className="draw-source-desc">只输入序号，自动匹配“赵欣/来图”中的唯一订单文件夹</span>
           <input
             type="text"
             value={orderName}
@@ -434,7 +487,7 @@ function DrawWorkbench({
           type="button"
           disabled={!canStart}
           onClick={onStart}
-          title={source === 'empty' ? '请填写 Google Drive 订单文件夹名' : ''}
+          title={source === 'empty' ? '请输入订单序号，例如 191' : ''}
         >
           {running === 'draw' ? '正在提交…' : locked ? '任务运行中' : '开始画图'}
         </button>
@@ -526,7 +579,7 @@ function App() {
       if (draw?.run_id && !['api_error', 'no_runs', 'unknown'].includes(draw.status)) {
         try {
           const detail = await getResult('draw');
-          if (!detail?.run_id || detail.run_id === draw.run_id) setDrawDetail(detail);
+          if (!detail?.run_id || detail.run_id === draw.run_id) setDrawDetail(normalizeDrawResult(detail, draw));
         } catch (detailError) {
           if (detailError.status !== 401) {
             setDrawDetail((current) => current?.run_id === draw.run_id ? current : null);
@@ -668,7 +721,8 @@ function App() {
     setResultError('');
     setResultLoading(true);
     try {
-      setResult(await getResult(key));
+      const payload = await getResult(key);
+      setResult(key === 'draw' ? normalizeDrawResult(payload, status.draw) : payload);
     } catch (error) {
       setResultError(error.message);
     } finally {
