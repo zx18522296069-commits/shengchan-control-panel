@@ -474,7 +474,7 @@ function DrawWorkbench({
   onOpenResult,
 }) {
   const state = taskState(drawStatus);
-  const hasFiles = files.length > 0;
+  const hasFiles = false;
   const hasOrder = Boolean(orderName.trim());
   const source = hasFiles ? 'upload' : hasOrder ? 'drive' : 'empty';
   const sourceText = source === 'upload'
@@ -520,18 +520,18 @@ function DrawWorkbench({
           />
         </label>
 
-        <label className={`draw-source-card upload-source ${hasFiles ? 'selected' : ''}`}>
+        <label className="draw-source-card upload-source">
           <span className="draw-source-number">B</span>
-          <span className="draw-source-title">本地上传</span>
-          <span className="draw-source-desc">ZIP / PDF / Excel；上传文件存在时优先于网盘</span>
+          <span className="draw-source-title">本地上传（当前不可用）</span>
+          <span className="draw-source-desc">GitHub Actions 模式请使用 Google Drive 订单</span>
           <input
             type="file"
             multiple
             accept=".zip,.pdf,.xlsx,.xlsm,.xls"
-            disabled={Boolean(running)}
+            disabled
             onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
           />
-          <span className="draw-source-note">{hasFiles ? `已选择 ${files.length} 个文件；执行时上传优先` : '支持 ZIP / PDF / Excel/BOM'}</span>
+          <span className="draw-source-note">无需 Cloud Run；文件请放入“赵欣/来图/订单名”</span>
         </label>
       </div>
 
@@ -545,7 +545,7 @@ function DrawWorkbench({
           type="button"
           disabled={!canStart}
           onClick={onStart}
-          title={source === 'empty' ? '请先上传文件或填写订单文件夹名' : ''}
+          title={source === 'empty' ? '请填写 Google Drive 订单文件夹名' : ''}
         >
           {running === 'draw' ? '正在提交…' : '开始画图'}
         </button>
@@ -675,13 +675,8 @@ function App() {
 
   async function startDraw() {
     const orderName = drawOrder.trim();
-    if (drawFiles.length > 0) {
-      const uploadOrderName = orderName || drawFiles[0]?.name?.replace(/\.[^.]+$/, '') || '本地上传画图任务';
-      await execute('draw', () => runDrawUpload(uploadOrderName, drawFiles));
-      return;
-    }
     if (!orderName) {
-      setNotice({ tone: 'failed', text: '请上传文件，或输入网盘“赵欣/来图”中的完整订单文件夹名；两边都为空时不执行。' });
+      setNotice({ tone: 'failed', text: '请输入网盘“赵欣/来图”中的完整订单文件夹名。' });
       return;
     }
     await execute('draw', () => runDraw(orderName));
@@ -776,4 +771,3 @@ function App() {
 }
 
 export default App;
-
