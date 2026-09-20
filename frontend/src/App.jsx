@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, rerunDrawIssues, runDraw, runDrawUpload, runParts, runSplit, setControlKey } from './api';
+import { getConfig, getDrawReview, getResult, getStatus, hasControlKey, markDrawReviewPass, rerunDrawIssues, runDraw, runDrawUpload, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 import SplitResults, { normalizeSplitResults } from './SplitResults';
 
@@ -623,7 +623,7 @@ function App() {
 
   useEffect(() => {
     if (!unlocked) return undefined;
-    refreshStatus();
+    refreshStatus(true);
     const timer = window.setInterval(() => refreshStatus(true), 30000);
     return () => window.clearInterval(timer);
   }, [refreshStatus, unlocked]);
@@ -632,11 +632,13 @@ function App() {
     event.preventDefault();
     setControlKey(passcode.trim());
     try {
-      const data = await getStatus();
-      setStatus(data || {});
+      // 登录只验证控制口令，不再依赖三个下游 GitHub 任务的状态都能成功读取。
+      // 这样即使某一个自动化仓库临时无权访问，也不会把整个控制台锁在登录页。
+      await getConfig();
       setUnlocked(true);
       setLastRefresh(new Date());
       setNotice({ tone: 'idle', text: '系统待机，可选择任务执行' });
+      refreshStatus(true);
     } catch (error) {
       setControlKey('');
       setNotice({ tone: 'failed', text: error.message });
