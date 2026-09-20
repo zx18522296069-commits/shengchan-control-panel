@@ -20,6 +20,14 @@ function encoded(value) {
 
 const health = await worker.fetch(new Request("https://api.example/"), env);
 assert.equal(health.status, 200);
+const healthPayload = await health.json();
+assert.equal(healthPayload.revision, "2026-09-20.2");
+
+const meta = await worker.fetch(new Request("https://api.example/api/meta"), env);
+assert.equal(meta.status, 200);
+const metaPayload = await meta.json();
+assert.equal(metaPayload.revision, "2026-09-20.2");
+assert.ok(metaPayload.routes.includes("POST /api/run/split"));
 
 const denied = await worker.fetch(request("/api/status", {
   headers: { origin, "x-control-key": "wrong" },
@@ -112,6 +120,9 @@ const statusPayload = await status.json();
 assert.deepEqual(Object.keys(statusPayload).sort(), ["draw", "parts", "split"]);
 assert.equal(statusPayload.draw.status, "success");
 assert.equal(statusPayload.draw.run_id, 123);
+const drawStatusCall = calls.find((item) => item.url.includes("/pdf-dxf-huatu/actions/workflows/draw.yml/runs?"));
+assert.ok(drawStatusCall);
+assert.match(drawStatusCall.url, /event=workflow_dispatch/);
 
 const drawResult = await worker.fetch(request("/api/results/draw"), env);
 assert.equal(drawResult.status, 200);
