@@ -1,5 +1,5 @@
 const API_VERSION = "2022-11-28";
-const CONTROL_API_REVISION = "2026-09-20.3";
+const CONTROL_API_REVISION = "2026-09-20.4";
 const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
@@ -31,8 +31,8 @@ const TASKS = {
   },
   draw: {
     repo: "zx18522296069-commits/pdf-dxf-huatu",
-    workflow: "draw.yml",
-    inputs: { order_name: "" },
+    workflow: "chat-draw.yml",
+    inputs: {},
   },
 };
 
@@ -104,8 +104,11 @@ async function github(env, path, options = {}) {
 
 async function startDraw(env, orderName) {
   const name = String(orderName || "").trim();
-  if (!name) throw Object.assign(new Error("画图订单名称不能为空"), { status: 422 });
-  return { ...(await dispatch(env, "draw", { order_name: name })), task: "draw", order_name: name };
+  throw Object.assign(new Error(
+    name
+      ? `画图已切换为ChatGPT Chat模式。请在固定画图Chat中发送序号 ${name}，本控制台只显示状态和结果。`
+      : "画图已切换为ChatGPT Chat模式。请在固定画图Chat中发送订单序号。"
+  ), { status: 422 });
 }
 
 function actionsOnlyError() {
@@ -177,7 +180,7 @@ async function dispatch(env, task, inputOverrides = {}) {
 
 async function latestWorkflowRun(env, task) {
   const target = TASKS[task];
-  const eventFilter = task === "draw" ? "&event=workflow_dispatch" : "";
+  const eventFilter = "";
   const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1${eventFilter}`);
   return payload.workflow_runs?.[0] || null;
 }
