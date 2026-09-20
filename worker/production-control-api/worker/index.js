@@ -187,6 +187,21 @@ async function workflowStatus(env, task) {
   };
 }
 
+async function safeWorkflowStatus(env, task) {
+  try {
+    return await workflowStatus(env, task);
+  } catch (error) {
+    return {
+      task,
+      status: "api_error",
+      detail: error?.status === 404
+        ? "GitHub 仓库或工作流当前不可访问，请检查控制台 GITHUB_TOKEN 对目标仓库的权限"
+        : (error?.message || "状态读取失败"),
+      checked_at: new Date().toISOString(),
+    };
+  }
+}
+
 function cleanLogLine(line) {
   return line
     .replace(/^\ufeff/, "")
@@ -728,7 +743,7 @@ async function handle(request, env) {
       return json(actionsOnlyError(), 200, origin);
     }
     if (url.pathname === "/api/status" && request.method === "GET") {
-      const [split, parts, draw] = await Promise.all([workflowStatus(env, "split"), workflowStatus(env, "parts"), workflowStatus(env, "draw")]);
+      const [split, parts, draw] = await Promise.all([safeWorkflowStatus(env, "split"), safeWorkflowStatus(env, "parts"), safeWorkflowStatus(env, "draw")]);
       return json({ split, parts, draw }, 200, origin);
     }
     const resultMatch = url.pathname.match(/^\/api\/results\/(split|parts|draw)$/);
