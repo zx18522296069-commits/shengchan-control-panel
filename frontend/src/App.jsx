@@ -366,7 +366,7 @@ function DrawWorkbench({
   const sourceText = source === 'upload'
     ? `本地上传 · ${files.length} 个文件`
     : source === 'drive'
-      ? `Google Drive · ${orderName.trim()}`
+      ? `Google Drive · 序号 ${orderName.trim()}`
       : '尚未选择输入来源';
   const canStart = source !== 'empty' && !locked;
   const phaseStatus = Array.isArray(drawResult?.steps) ? drawResult.steps : [];
@@ -401,8 +401,10 @@ function DrawWorkbench({
           <input
             type="text"
             value={orderName}
-            onChange={(event) => onOrderChange(event.target.value)}
-            placeholder="例如：159.26-08-31 YT27-2400Z-1004"
+            onChange={(event) => onOrderChange(event.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="例如：191"
             disabled={Boolean(locked) || hasFiles}
           />
         </label>
@@ -418,7 +420,7 @@ function DrawWorkbench({
             disabled
             onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
           />
-          <span className="draw-source-note">无需 Cloud Run；文件请放入“赵欣/来图/订单名”</span>
+          <span className="draw-source-note">例如输入 191，自动匹配“赵欣/来图”中以 191 开头的唯一订单文件夹</span>
         </label>
       </div>
 
@@ -654,7 +656,7 @@ function App() {
   async function startDraw() {
     const orderName = drawOrder.trim();
     if (!orderName) {
-      setNotice({ tone: 'failed', text: '请输入网盘“赵欣/来图”中的完整订单文件夹名。' });
+      setNotice({ tone: 'failed', text: '请输入订单序号，例如 191。' });
       return;
     }
     await execute('draw', () => runDraw(orderName));
