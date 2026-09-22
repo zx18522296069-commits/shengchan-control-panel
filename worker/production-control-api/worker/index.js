@@ -178,34 +178,28 @@ async function dispatch(env, task, inputOverrides = {}) {
   return { status: "requested", workflow: target.workflow, inputs };
 }
 
-async function drawSequenceForRun(env, run) {
-  if (!run?.head_sha) return "";
-  const target = TASKS.draw;
-  const commit = await github(env, `/repos/${target.repo}/commits/${encodeURIComponent(run.head_sha)}`);
-  for (const file of commit.files || []) {
-    const match = String(file.filename || "").match(/^chat_jobs\/([^/]+)\/ready\.json$/);
-    if (match) return match[1];
-  }
-  return "";
-}
-
 async function latestWorkflowRun(env, task, orderRef = "") {
   const target = TASKS[task];
   const requestedOrder = task === "draw" ? String(orderRef || "").trim() : "";
-  const perPage = requestedOrder ? 30 : 1;
-  const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=${perPage}`);
-  const runs = payload.workflow_runs || [];
-  if (!requestedOrder) return runs[0] || null;
-
-  for (const run of runs) {
-    try {
-      const orderSequence = await drawSequenceForRun(env, run);
-      if (orderSequence === requestedOrder) return { ...run, order_sequence: orderSequence };
-    } catch (error) {
-      if (error?.status === 403 || error?.status === 404) throw error;
-    }
+  if (!requestedOrder) {
+    const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1`);
+    return payload.workflow_runs?.[0] || null;
   }
-  return null;
+
+  const readyPath = `chat_jobs/${requestedOrder}/ready.json`;
+  const commits = await github(
+    env,
+    `/repos/${target.repo}/commits?path=${encodeURIComponent(readyPath)}&sha=main&per_page=1`,
+  );
+  const headSha = Array.isArray(commits) ? commits[0]?.sha : null;
+  if (!headSha) return null;
+
+  const payload = await github(
+    env,
+    `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&head_sha=${encodeURIComponent(headSha)}&per_page=1`,
+  );
+  const run = payload.workflow_runs?.[0] || null;
+  return run ? { ...run, order_sequence: requestedOrder } : null;
 }
 
 async function workflowStatus(env, task, orderRef = "") {
