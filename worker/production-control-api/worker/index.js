@@ -1,5 +1,5 @@
 const API_VERSION = "2022-11-28";
-const CONTROL_API_REVISION = "2026-09-20.4";
+const CONTROL_API_REVISION = "2026-09-22.1";
 const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
