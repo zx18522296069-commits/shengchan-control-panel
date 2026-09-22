@@ -359,7 +359,7 @@ function normalizeDrawResult(result, drawStatus) {
     };
   });
 
-  const overall = String(drawStatus?.status || result.status || 'unknown').toLowerCase();
+  const overall = String(result.status || drawStatus?.status || 'unknown').toLowerCase();
   const isOk = (value) => ['ok', 'success', 'completed', 'pass', 'passed'].includes(value);
   const isPending = (value) => ['pending', 'unknown', ''].includes(value);
   const isError = (value) => ['error', 'failed', 'failure', 'cancelled'].includes(value);
@@ -406,8 +406,15 @@ function DrawWorkbench({
   onOrderChange,
   onOpenResult,
 }) {
-  const state = taskState(drawStatus);
   const normalizedResult = normalizeDrawResult(drawResult, drawStatus);
+  const rawState = taskState(
+    normalizedResult?.status
+      ? { ...(drawStatus || {}), status: normalizedResult.status }
+      : drawStatus,
+  );
+  const state = normalizedResult?.status === 'partial'
+    ? { ...rawState, text: '待真实复核' }
+    : rawState;
   const phaseStatus = Array.isArray(normalizedResult?.steps) ? normalizedResult.steps : [];
   const completion = normalizedResult?.completion || {};
   const metrics = [
@@ -733,7 +740,19 @@ function App() {
         </div>
         <div className="status-grid">
           {Object.entries(TASKS).map(([key, task]) => {
-            const current = taskState(status[key]);
+            const drawBusinessStatus = key === 'draw'
+              && drawDetail
+              && (!drawDetail.run_id || !status.draw?.run_id || drawDetail.run_id === status.draw.run_id)
+              ? drawDetail.status
+              : '';
+            const rawCurrent = taskState(
+              drawBusinessStatus
+                ? { ...(status[key] || {}), status: drawBusinessStatus }
+                : status[key],
+            );
+            const current = key === 'draw' && drawBusinessStatus === 'partial'
+              ? { ...rawCurrent, text: '待真实复核' }
+              : rawCurrent;
             return (
               <article className="status-card" key={key}>
                 <div className="status-row">
