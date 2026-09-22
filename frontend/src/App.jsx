@@ -338,6 +338,17 @@ function isTaskActive(task) {
   return ['in_progress', 'queued', 'requested', 'waiting'].includes(task?.status);
 }
 
+function drawDisplayStatus(drawStatus, drawResult) {
+  const actionStatus = String(drawStatus?.status || 'unknown').toLowerCase();
+  if (['in_progress', 'queued', 'requested', 'waiting'].includes(actionStatus)) return actionStatus;
+  if (['failure', 'failed', 'cancelled', 'api_error'].includes(actionStatus)) return actionStatus;
+
+  const sameRun = drawResult
+    && (!drawResult.run_id || !drawStatus?.run_id || drawResult.run_id === drawStatus.run_id);
+  if (sameRun && drawResult?.status) return String(drawResult.status).toLowerCase();
+  return actionStatus;
+}
+
 const DRAW_STAGES = [
   '读取输入',
   'PDF解析 / 缓存',
@@ -359,7 +370,7 @@ function normalizeDrawResult(result, drawStatus) {
     };
   });
 
-  const overall = String(result.status || drawStatus?.status || 'unknown').toLowerCase();
+  const overall = drawDisplayStatus(drawStatus, result);
   const isOk = (value) => ['ok', 'success', 'completed', 'pass', 'passed'].includes(value);
   const isPending = (value) => ['pending', 'unknown', ''].includes(value);
   const isError = (value) => ['error', 'failed', 'failure', 'cancelled'].includes(value);
@@ -407,12 +418,9 @@ function DrawWorkbench({
   onOpenResult,
 }) {
   const normalizedResult = normalizeDrawResult(drawResult, drawStatus);
-  const rawState = taskState(
-    normalizedResult?.status
-      ? { ...(drawStatus || {}), status: normalizedResult.status }
-      : drawStatus,
-  );
-  const state = normalizedResult?.status === 'partial'
+  const displayStatus = drawDisplayStatus(drawStatus, normalizedResult);
+  const rawState = taskState({ ...(drawStatus || {}), status: displayStatus });
+  const state = displayStatus === 'partial'
     ? { ...rawState, text: '待真实复核' }
     : rawState;
   const phaseStatus = Array.isArray(normalizedResult?.steps) ? normalizedResult.steps : [];
@@ -741,12 +749,10 @@ function App() {
         <div className="status-grid">
           {Object.entries(TASKS).map(([key, task]) => {
             const drawBusinessStatus = key === 'draw'
-              && drawDetail
-              && (!drawDetail.run_id || !status.draw?.run_id || drawDetail.run_id === status.draw.run_id)
-              ? drawDetail.status
+              ? drawDisplayStatus(status.draw, drawDetail)
               : '';
             const rawCurrent = taskState(
-              drawBusinessStatus
+              key === 'draw'
                 ? { ...(status[key] || {}), status: drawBusinessStatus }
                 : status[key],
             );
