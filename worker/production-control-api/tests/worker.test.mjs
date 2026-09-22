@@ -21,12 +21,12 @@ function encoded(value) {
 const health = await worker.fetch(new Request("https://api.example/"), env);
 assert.equal(health.status, 200);
 const healthPayload = await health.json();
-assert.equal(healthPayload.revision, "2026-09-20.4");
+assert.equal(healthPayload.revision, "2026-09-22.1");
 
 const meta = await worker.fetch(new Request("https://api.example/api/meta"), env);
 assert.equal(meta.status, 200);
 const metaPayload = await meta.json();
-assert.equal(metaPayload.revision, "2026-09-20.4");
+assert.equal(metaPayload.revision, "2026-09-22.1");
 assert.ok(metaPayload.routes.includes("POST /api/run/split"));
 
 const denied = await worker.fetch(request("/api/status", {
