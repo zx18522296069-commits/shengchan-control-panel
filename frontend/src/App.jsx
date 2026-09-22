@@ -519,7 +519,7 @@ function App() {
 
   const refreshStatus = useCallback(async (quiet = false) => {
     try {
-      const data = await getStatus();
+      const data = await getStatus(drawOrder.trim());
       setStatus(data || {});
       setLastRefresh(new Date());
 
@@ -540,7 +540,7 @@ function App() {
       const draw = data?.draw;
       if (draw?.run_id && !['api_error', 'no_runs', 'unknown'].includes(draw.status)) {
         try {
-          const detail = await getResult('draw');
+          const detail = await getResult('draw', drawOrder.trim());
           if (!detail?.run_id || detail.run_id === draw.run_id) setDrawDetail(normalizeDrawResult(detail, draw));
         } catch (detailError) {
           if (detailError.status !== 401) {
@@ -563,7 +563,7 @@ function App() {
       setLastRefresh(new Date());
       if (!quiet) setNotice({ tone: 'failed', text: error.message });
     }
-  }, []);
+  }, [drawOrder]);
 
   useEffect(() => {
     const handleUnauthorized = (event) => {
@@ -674,7 +674,7 @@ function App() {
     setResultError('');
     setResultLoading(true);
     try {
-      const payload = await getResult(key);
+      const payload = await getResult(key, key === 'draw' ? drawOrder.trim() : '');
       setResult(key === 'draw' ? normalizeDrawResult(payload, status.draw) : payload);
     } catch (error) {
       setResultError(error.message);
