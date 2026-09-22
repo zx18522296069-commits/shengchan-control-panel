@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getConfig, getResult, getStatus, hasControlKey, runDraw, runParts, runSplit, setControlKey } from './api';
+import { getConfig, getResult, getStatus, hasControlKey, runParts, runSplit, setControlKey } from './api';
 import Settings from './pages/Settings';
 import SplitResults, { normalizeSplitResults } from './SplitResults';
 
@@ -401,26 +401,12 @@ function normalizeDrawResult(result, drawStatus) {
 
 function DrawWorkbench({
   orderName,
-  files,
-  running,
   drawStatus,
   drawResult,
-  locked,
   onOrderChange,
-  onFilesChange,
-  onStart,
   onOpenResult,
 }) {
   const state = taskState(drawStatus);
-  const hasFiles = false;
-  const hasOrder = Boolean(orderName.trim());
-  const source = hasFiles ? 'upload' : hasOrder ? 'drive' : 'empty';
-  const sourceText = source === 'upload'
-    ? `本地上传 · ${files.length} 个文件`
-    : source === 'drive'
-      ? `Google Drive · 序号 ${orderName.trim()}`
-      : '尚未选择输入来源';
-  const canStart = false;
   const normalizedResult = normalizeDrawResult(drawResult, drawStatus);
   const phaseStatus = Array.isArray(normalizedResult?.steps) ? normalizedResult.steps : [];
   const completion = normalizedResult?.completion || {};
@@ -448,49 +434,26 @@ function DrawWorkbench({
 
       <div className="draw-source-grid">
         <label className="draw-source-card">
-          <span className="draw-source-number">A</span>
-          <span className="draw-source-title">固定 Chat 触发</span>
-          <span className="draw-source-desc">在固定画图 Chat 中只发送订单序号，例如 191</span>
+          <span className="draw-source-title">订单序号</span>
+          <span className="draw-source-desc">这里只记录/核对序号；真正触发请在固定画图 Chat 中发送同一个纯数字序号。</span>
           <input
             type="text"
             value={orderName}
             onChange={(event) => onOrderChange(event.target.value.replace(/\D/g, ''))}
             inputMode="numeric"
             pattern="[0-9]*"
-            placeholder="例如：191"
-            disabled={Boolean(locked) || hasFiles}
+            placeholder="例如：198"
           />
-        </label>
-
-        <label className="draw-source-card upload-source">
-          <span className="draw-source-number">B</span>
-          <span className="draw-source-title">本地上传（当前不可用）</span>
-          <span className="draw-source-desc">GitHub Actions 模式请使用 Google Drive 订单</span>
-          <input
-            type="file"
-            multiple
-            accept=".zip,.pdf,.xlsx,.xlsm,.xls"
-            disabled
-            onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
-          />
-          <span className="draw-source-note">本地上传停用；Chat 会读取“赵欣/来图”并自动匹配唯一订单文件夹</span>
+          <span className="draw-source-note">本页不启动识图，不调用另一套API画图；状态会自动读取正式 Chat Drawing Worker。</span>
         </label>
       </div>
 
       <div className="draw-command-bar">
         <div className="draw-source-current">
-          <span>本次输入</span>
-          <strong>在固定 Chat 中发送纯数字序号，例如 191</strong>
+          <span>正式触发方式</span>
+          <strong>固定画图 Chat → 发送纯数字序号 → 自动执行</strong>
         </div>
-        <button
-          className="draw-start-button"
-          type="button"
-          disabled={!canStart}
-          onClick={onStart}
-          title="画图已切换为固定 ChatGPT Chat 触发"
-        >
-          Chat 模式启动
-        </button>
+        <span className="draw-source-note">状态每30秒自动刷新</span>
       </div>
 
       <div className="draw-metrics">
@@ -545,7 +508,6 @@ function App() {
   const [notice, setNotice] = useState({ tone: 'idle', text: '系统待机，可选择任务执行' });
   const [running, setRunning] = useState('');
   const [drawOrder, setDrawOrder] = useState('');
-  const [drawFiles, setDrawFiles] = useState([]);
   const [drawDetail, setDrawDetail] = useState(null);
   const [submittedAt, setSubmittedAt] = useState({});
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -706,15 +668,6 @@ function App() {
     setNotice({ tone: 'idle', text: '已退出控制台，请重新输入操作口令' });
   }
 
-  async function startDraw() {
-    const orderName = drawOrder.trim();
-    if (!orderName) {
-      setNotice({ tone: 'failed', text: '请输入订单序号，例如 191。' });
-      return;
-    }
-    await execute('draw', () => runDraw(orderName));
-  }
-
   async function openResult(key) {
     setResultTask(key);
     setResult(null);
@@ -749,14 +702,9 @@ function App() {
 
       <DrawWorkbench
         orderName={drawOrder}
-        files={drawFiles}
-        running={running}
         drawStatus={status.draw}
         drawResult={drawDetail}
-        locked={Boolean(running) || Boolean(submittedAt.draw) || isTaskActive(status.draw)}
         onOrderChange={setDrawOrder}
-        onFilesChange={setDrawFiles}
-        onStart={startDraw}
         onOpenResult={() => openResult('draw')}
       />
 
