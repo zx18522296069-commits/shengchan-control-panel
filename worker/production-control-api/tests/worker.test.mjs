@@ -376,25 +376,16 @@ assert.ok(!saveCalls.some((item) => item.url.includes("weijiagong-lingjian-guida
 // 画图并行后，状态/结果必须按订单序号隔离；最终复核结果和ZIP链接必须覆盖候选结果。
 global.fetch = async (url) => {
   const target = String(url);
-  if (target.includes("/pdf-dxf-huatu/actions/workflows/chat-draw.yml/runs?")) {
-    return Response.json({ workflow_runs: [
-      {
-        id: 199, run_number: 70, status: "completed", conclusion: "success",
-        event: "push", head_sha: "sha199", updated_at: "2026-09-22T00:20:00Z",
-        html_url: "https://example.test/run/199",
-      },
-      {
-        id: 198, run_number: 69, status: "completed", conclusion: "success",
-        event: "push", head_sha: "sha198", updated_at: "2026-09-22T00:19:00Z",
-        html_url: "https://example.test/run/198",
-      },
-    ] });
+  if (target.includes("/pdf-dxf-huatu/commits?") && target.includes("chat_jobs%2F198%2Fready.json")) {
+    return Response.json([{ sha: "sha198" }]);
   }
-  if (target.includes("/pdf-dxf-huatu/commits/sha199")) {
-    return Response.json({ files: [{ filename: "chat_jobs/199/ready.json" }] });
-  }
-  if (target.includes("/pdf-dxf-huatu/commits/sha198")) {
-    return Response.json({ files: [{ filename: "chat_jobs/198/ready.json" }] });
+  if (target.includes("/pdf-dxf-huatu/actions/workflows/chat-draw.yml/runs?")
+      && target.includes("head_sha=sha198")) {
+    return Response.json({ workflow_runs: [{
+      id: 198, run_number: 69, status: "completed", conclusion: "success",
+      event: "push", head_sha: "sha198", updated_at: "2026-09-22T00:19:00Z",
+      html_url: "https://example.test/run/198",
+    }] });
   }
   if (target.includes("/actions/runs/198/jobs")) {
     return Response.json({ jobs: [{ id: 918, name: "draw" }] });
