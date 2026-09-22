@@ -203,12 +203,14 @@ export function rerunDrawIssues(jobId) {
   });
 }
 
-export function getStatus() {
-  return request('/api/status');
+export function getStatus(drawOrder = '') {
+  const query = drawOrder ? `?draw_order=${encodeURIComponent(drawOrder)}` : '';
+  return request(`/api/status${query}`);
 }
 
-export async function getResult(task) {
-  const payload = await request(`/api/results/${task}`);
+export async function getResult(task, drawOrder = '') {
+  const query = task === 'draw' && drawOrder ? `?draw_order=${encodeURIComponent(drawOrder)}` : '';
+  const payload = await request(`/api/results/${task}${query}`);
   return task === 'parts' ? normalizePartsResult(payload) : payload;
 }
 
