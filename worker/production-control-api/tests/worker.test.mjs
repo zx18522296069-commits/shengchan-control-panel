@@ -373,5 +373,60 @@ assert.equal(savedPayload.commits.parts, "control-panel-scheduler");
 assert.ok(saveCalls.some((item) => item.url.includes("shengchan-control-panel/contents/backend/config.json") && item.init.method === "PUT"));
 assert.ok(!saveCalls.some((item) => item.url.includes("weijiagong-lingjian-guidang/contents/.github/workflows/update_parts.yml")));
 
+// 画图并行后，状态/结果必须按订单序号隔离；最终复核结果和ZIP链接必须覆盖候选结果。
+global.fetch = async (url) => {
+  const target = String(url);
+  if (target.includes("/pdf-dxf-huatu/actions/workflows/chat-draw.yml/runs?")) {
+    return Response.json({ workflow_runs: [
+      {
+        id: 199, run_number: 70, status: "completed", conclusion: "success",
+        event: "push", head_sha: "sha199", updated_at: "2026-09-22T00:20:00Z",
+        html_url: "https://example.test/run/199",
+      },
+      {
+        id: 198, run_number: 69, status: "completed", conclusion: "success",
+        event: "push", head_sha: "sha198", updated_at: "2026-09-22T00:19:00Z",
+        html_url: "https://example.test/run/198",
+      },
+    ] });
+  }
+  if (target.includes("/pdf-dxf-huatu/commits/sha199")) {
+    return Response.json({ files: [{ filename: "chat_jobs/199/ready.json" }] });
+  }
+  if (target.includes("/pdf-dxf-huatu/commits/sha198")) {
+    return Response.json({ files: [{ filename: "chat_jobs/198/ready.json" }] });
+  }
+  if (target.includes("/actions/runs/198/jobs")) {
+    return Response.json({ jobs: [{ id: 918, name: "draw" }] });
+  }
+  if (target.includes("/actions/jobs/918/logs")) {
+    return new Response([
+      "DRAW_STEP=0|ok|✅ 已定位订单198",
+      "DRAW_STEP=5|wait|待真实复核",
+      'DRAW_RESULT_JSON={"status":"needs_review","order_name":"198.full","alerts":[]}',
+      "DRAW_FINAL_STEP=5|ok|✅ 正式交付完成",
+      'DRAW_FINAL_RESULT_JSON={"status":"completed","order_name":"198.full","drive_url":"https://drive.example/198","zip_download_url":"https://github.example/198.zip","alerts":[]}',
+    ].join("\n"));
+  }
+  if (target.includes("/actions/workflows/") && target.includes("/runs?")) {
+    return Response.json({ workflow_runs: [{
+      id: 123, run_number: 14, status: "completed", conclusion: "success",
+      event: "workflow_dispatch", updated_at: "2026-09-16T08:20:09Z", html_url: "https://example.test/run/123",
+    }] });
+  }
+  return Response.json({});
+};
+
+const isolatedDraw = await worker.fetch(request("/api/results/draw?draw_order=198"), env);
+assert.equal(isolatedDraw.status, 200);
+const isolatedPayload = await isolatedDraw.json();
+assert.equal(isolatedPayload.run_id, 198);
+assert.equal(isolatedPayload.status, "success");
+assert.equal(isolatedPayload.steps[5].status, "ok");
+assert.equal(isolatedPayload.steps[5].text, "✅ 正式交付完成");
+assert.equal(isolatedPayload.links.length, 3);
+assert.equal(isolatedPayload.links[1].url, "https://drive.example/198");
+assert.equal(isolatedPayload.links[2].url, "https://github.example/198.zip");
+
 global.fetch = originalFetch;
-console.log("Worker routes, dispatch, incremental status, PDF parsing, control-panel scheduling, and dedup tests passed");
+console.log("Worker routes, dispatch, incremental status, PDF parsing, order-isolated drawing status, final ZIP, control-panel scheduling, and dedup tests passed");
