@@ -51,6 +51,12 @@ jobs:
         working-directory: .
         run: node worker/production-control-api/tests/worker.test.mjs
 
+      - name: Build and validate Sites production API artifact
+        working-directory: worker/production-control-api
+        run: |
+          npm run build
+          npm run validate
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
