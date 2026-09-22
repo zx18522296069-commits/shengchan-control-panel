@@ -178,18 +178,42 @@ async function dispatch(env, task, inputOverrides = {}) {
   return { status: "requested", workflow: target.workflow, inputs };
 }
 
-async function latestWorkflowRun(env, task) {
-  const target = TASKS[task];
-  const eventFilter = "";
-  const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=1${eventFilter}`);
-  return payload.workflow_runs?.[0] || null;
+async function drawSequenceForRun(env, run) {
+  if (!run?.head_sha) return "";
+  const target = TASKS.draw;
+  const commit = await github(env, `/repos/${target.repo}/commits/${encodeURIComponent(run.head_sha)}`);
+  for (const file of commit.files || []) {
+    const match = String(file.filename || "").match(/^chat_jobs\/([^/]+)\/ready\.json$/);
+    if (match) return match[1];
+  }
+  return "";
 }
 
-async function workflowStatus(env, task) {
-  const latest = await latestWorkflowRun(env, task);
-  if (!latest) return { task, status: "no_runs", checked_at: new Date().toISOString() };
+async function latestWorkflowRun(env, task, orderRef = "") {
+  const target = TASKS[task];
+  const requestedOrder = task === "draw" ? String(orderRef || "").trim() : "";
+  const perPage = requestedOrder ? 30 : 1;
+  const payload = await github(env, `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&per_page=${perPage}`);
+  const runs = payload.workflow_runs || [];
+  if (!requestedOrder) return runs[0] || null;
+
+  for (const run of runs) {
+    try {
+      const orderSequence = await drawSequenceForRun(env, run);
+      if (orderSequence === requestedOrder) return { ...run, order_sequence: orderSequence };
+    } catch (error) {
+      if (error?.status === 403 || error?.status === 404) throw error;
+    }
+  }
+  return null;
+}
+
+async function workflowStatus(env, task, orderRef = "") {
+  const latest = await latestWorkflowRun(env, task, orderRef);
+  if (!latest) return { task, order_sequence: task === "draw" ? String(orderRef || "").trim() : "", status: "no_runs", checked_at: new Date().toISOString() };
   return {
     task,
+    order_sequence: latest.order_sequence || (task === "draw" ? String(orderRef || "").trim() : ""),
     status: latest.status === "completed" ? (latest.conclusion || "unknown") : latest.status,
     event: latest.event,
     run_started_at: latest.run_started_at,
@@ -201,9 +225,9 @@ async function workflowStatus(env, task) {
   };
 }
 
-async function safeWorkflowStatus(env, task) {
+async function safeWorkflowStatus(env, task, orderRef = "") {
   try {
-    return await workflowStatus(env, task);
+    return await workflowStatus(env, task, orderRef);
   } catch (error) {
     const target = TASKS[task];
     return {
@@ -422,14 +446,17 @@ function parseDrawResult(log, latest) {
   const lines = log.split(/\r?\n/).map(cleanLogLine);
   const stepMap = new Map();
   for (const line of lines) {
-    const match = line.match(/^DRAW_STEP=(\d+)\|([^|]+)\|(.*)$/);
+    const match = line.match(/^(?:DRAW_STEP|DRAW_FINAL_STEP)=(\d+)\|([^|]+)\|(.*)$/);
     if (!match) continue;
     const index = Number(match[1]);
     if (!Number.isInteger(index) || index < 0 || index > 5) continue;
     stepMap.set(index, { status: match[2] || "pending", text: match[3] || "等待任务数据" });
   }
   const steps = Array.from({ length: 6 }, (_, index) => stepMap.get(index) || { status: "pending", text: "等待任务数据" });
-  const encoded = lines.map((line) => line.match(/DRAW_RESULT_JSON=(\{.*\})$/)?.[1]).filter(Boolean).at(-1);
+  const encoded = lines
+    .map((line) => line.match(/^(?:DRAW_RESULT_JSON|DRAW_FINAL_RESULT_JSON)=(\{.*\})$/)?.[1])
+    .filter(Boolean)
+    .at(-1);
   if (!encoded) {
     const completedSteps = steps.filter((item) => item.status === "ok").length;
     if (latest.status && latest.status !== "completed") {
@@ -467,14 +494,16 @@ function parseDrawResult(log, latest) {
     issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : "需要复核", cause: message, action: "按提示核对后重新执行订单。", reason: message })),
     warnings: [],
     drive_url: payload.drive_url || null,
+    zip_download_url: payload.zip_download_url || null,
+    order_name: payload.order_name || null,
     steps,
     issue_count: alerts.length,
   };
 }
 
-async function workflowResult(env, task) {
+async function workflowResult(env, task, orderRef = "") {
   const target = TASKS[task];
-  const latest = await latestWorkflowRun(env, task);
+  const latest = await latestWorkflowRun(env, task, orderRef);
   if (!latest) return { task, status: "no_runs", completion: { percent: 0, completed: 0, total: 0, unit: task === "split" ? "个图纸文件" : "张板材" }, summary: [], successes: [], issues: [], warnings: [], links: RESULT_LINKS[task] };
   const payload = await github(env, `/repos/${target.repo}/actions/runs/${latest.id}/jobs?per_page=100`);
   const expectedJob = task === "split" ? "split" : task === "draw" ? "draw" : "update";
@@ -484,6 +513,7 @@ async function workflowResult(env, task) {
   const parsed = task === "split" ? parseSplitResult(log, latest) : task === "draw" ? parseDrawResult(log, latest) : parsePartsResult(log, latest);
   const links = [{ label: "打开 GitHub 运行日志", url: latest.html_url }];
   if (parsed.drive_url) links.push({ label: "打开 Google Drive", url: parsed.drive_url });
+  if (parsed.zip_download_url) links.push({ label: "下载最终 ZIP", url: parsed.zip_download_url });
   if (RESULT_LINKS[task]) links.push(...RESULT_LINKS[task]);
   return { task, run_id: latest.id, run_number: latest.run_number, event: latest.event, updated_at: latest.updated_at, html_url: latest.html_url, ...parsed, links };
 }
@@ -806,12 +836,18 @@ async function handle(request, env) {
       return json(actionsOnlyError(), 200, origin);
     }
     if (url.pathname === "/api/status" && request.method === "GET") {
-      const [split, parts, draw] = await Promise.all([safeWorkflowStatus(env, "split"), safeWorkflowStatus(env, "parts"), safeWorkflowStatus(env, "draw")]);
+      const drawOrder = String(url.searchParams.get("draw_order") || "").trim();
+      const [split, parts, draw] = await Promise.all([
+        safeWorkflowStatus(env, "split"),
+        safeWorkflowStatus(env, "parts"),
+        safeWorkflowStatus(env, "draw", drawOrder),
+      ]);
       return json({ split, parts, draw }, 200, origin);
     }
     const resultMatch = url.pathname.match(/^\/api\/results\/(split|parts|draw)$/);
     if (resultMatch && request.method === "GET") {
-      return json(await workflowResult(env, resultMatch[1]), 200, origin);
+      const drawOrder = resultMatch[1] === "draw" ? String(url.searchParams.get("draw_order") || "").trim() : "";
+      return json(await workflowResult(env, resultMatch[1], drawOrder), 200, origin);
     }
     const drawReviewMatch = url.pathname.match(/^\/api\/draw\/review\/([^/]+)$/);
     if (drawReviewMatch && request.method === "GET") {
