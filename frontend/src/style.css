@@ -209,7 +209,7 @@ input, select { width: 100%; min-height: 44px; padding: 9px 11px; color: #edf5ff
 }
 .draw-source-grid {
   display: grid;
-  grid-template-columns: 1.35fr 1fr;
+  grid-template-columns: 1fr;
   gap: 14px;
   margin-top: 22px;
 }
