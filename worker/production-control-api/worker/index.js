@@ -1,6 +1,15 @@
 const API_VERSION = "2022-11-28";
 const CONTROL_API_REVISION = "2026-09-22.1";
-const ALLOWED_ORIGIN = "https://zx18522296069-commits.github.io";
+const ALLOWED_ORIGINS = new Set([
+  "https://zx18522296069-commits.github.io",
+  "https://weijiagong-parts-control.vercel.app",
+  "https://tuzhichaifen-control.vercel.app",
+]);
+
+function isAllowedOrigin(origin) {
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  return /^https:\/\/(?:weijiagong-parts-control|tuzhichaifen-control)(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin || "");
+}
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
 const SCHEDULER_STATE_PATH = "backend/scheduler_state.json";
@@ -52,7 +61,7 @@ function corsHeaders(origin) {
     "access-control-max-age": "86400",
     vary: "Origin",
   };
-  if (origin === ALLOWED_ORIGIN) headers["access-control-allow-origin"] = origin;
+  if (isAllowedOrigin(origin)) headers["access-control-allow-origin"] = origin;
   return headers;
 }
 
