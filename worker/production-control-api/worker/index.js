@@ -3,12 +3,14 @@ const CONTROL_API_REVISION = "2026-09-22.1";
 const ALLOWED_ORIGINS = new Set([
   "https://zx18522296069-commits.github.io",
   "https://weijiagong-parts-control.vercel.app",
+  "https://weijiagong-lingjian-guidang-vercel.vercel.app",
   "https://tuzhichaifen-control.vercel.app",
+  "https://tuzhichaifen-vercel-ui.vercel.app",
 ]);
 
 function isAllowedOrigin(origin) {
   if (ALLOWED_ORIGINS.has(origin)) return true;
-  return /^https:\/\/(?:weijiagong-parts-control|tuzhichaifen-control)(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin || "");
+  return /^https:\/\/(?:weijiagong-parts-control|weijiagong-lingjian-guidang-vercel|tuzhichaifen-control|tuzhichaifen-vercel-ui)(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin || "");
 }
 const CONTROL_REPO = "zx18522296069-commits/shengchan-control-panel";
 const CONFIG_PATH = "backend/config.json";
