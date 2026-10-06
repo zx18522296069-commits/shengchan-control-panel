@@ -2,7 +2,7 @@
 
 面向车间同事的简洁操作入口，集中控制三个生产任务：
 
-- 画图：触发 `pdf-dxf-huatu` 的正式 GitHub Actions 工作流
+- 画图：通过固定 ChatGPT Chat 发起；控制台按订单查看 GitHub Actions 进度和结果
 - 拆图：触发 `tuzhichaifen` 的正式生产工作流
 - 未加工更新：触发 `weijiagong-lingjian-guidang` 的正式生产工作流
 
@@ -43,12 +43,10 @@
 > 不得把 `GITHUB_TOKEN` 或 `CONTROL_PANEL_KEY` 写入仓库或前端构建变量。
 
 
-## 画图任务正式接口
+## 画图任务正式流程
 
-“画图”使用现有 GitHub Actions 执行，不依赖 Cloud Run、Cloud Build 或 Artifact Registry。
+“画图”由固定 ChatGPT Chat 接收订单序号并写入 `pdf-dxf-huatu/chat_jobs/<序号>/ready.json`。GitHub Actions 的 `chat-draw.yml` 监听 `ready.json`，进入候选生成、自动验收和正式复核流程；人工复核提交 `review_complete.json` 后会触发同一工作流继续收尾。
 
-固定链路：
+生产控制台只读状态与结果，不触发画图任务。订单输入框用于筛选指定订单的运行状态；页面每 30 秒刷新，并可手动刷新。查看结果会读取对应运行日志。候选结果等待真实复核时显示“待真实复核”；DXF 和复核已经完成但 Google Drive 上传需要补处理时显示“Drive交付待补”，这两种状态不可混淆。
 
-前端画图按钮 → production-control-api → GitHub API workflow_dispatch → pdf-dxf-huatu/draw.yml → Google Drive 读取订单 → PDF→DXF 正式处理 → Actions artifact / Google Drive
-
-当前 Actions 模式只支持从 Google Drive 按订单名执行。本地文件上传、异常项单独复跑和网页内人工复核依赖常驻任务 API，暂不在此模式中启用。画图规则、正式复核门控和 Drive 正式交付条件保持不变。
+历史 `/api/run/draw`、文件上传、单独复跑和网页人工复核接口不执行画图，会返回迁移提示。最终 DXF 生成、质量检查和正式复核门控仍由 `pdf-dxf-huatu` 负责。
