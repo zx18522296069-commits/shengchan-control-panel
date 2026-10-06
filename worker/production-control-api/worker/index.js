@@ -197,19 +197,32 @@ async function latestWorkflowRun(env, task, orderRef = "") {
     return payload.workflow_runs?.[0] || null;
   }
 
-  const readyPath = `chat_jobs/${requestedOrder}/ready.json`;
-  const commits = await github(
+  // Both ready and review_complete commits start this workflow. Looking only at
+  // ready.json pins the panel to the pre-review run after a real review is submitted.
+  const paths = [
+    `chat_jobs/${requestedOrder}/ready.json`,
+    `chat_jobs/${requestedOrder}/review_complete.json`,
+  ];
+  const commitLists = await Promise.all(paths.map((path) => github(
     env,
-    `/repos/${target.repo}/commits?path=${encodeURIComponent(readyPath)}&sha=main&per_page=1`,
-  );
-  const headSha = Array.isArray(commits) ? commits[0]?.sha : null;
-  if (!headSha) return null;
+    `/repos/${target.repo}/commits?path=${encodeURIComponent(path)}&sha=main&per_page=1`,
+  )));
+  const heads = commitLists
+    .map((commits) => Array.isArray(commits) ? commits[0] : null)
+    .filter((commit) => commit?.sha);
+  if (!heads.length) return null;
 
-  const payload = await github(
-    env,
-    `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&head_sha=${encodeURIComponent(headSha)}&per_page=1`,
-  );
-  const run = payload.workflow_runs?.[0] || null;
+  const runsByHead = await Promise.all(heads.map(async (commit) => {
+    const payload = await github(
+      env,
+      `/repos/${target.repo}/actions/workflows/${target.workflow}/runs?branch=main&head_sha=${encodeURIComponent(commit.sha)}&per_page=1`,
+    );
+    return payload.workflow_runs?.[0] || null;
+  }));
+  const run = runsByHead
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b.created_at || b.run_started_at || b.updated_at || 0)
+      - Date.parse(a.created_at || a.run_started_at || a.updated_at || 0))[0] || null;
   return run ? { ...run, order_sequence: requestedOrder } : null;
 }
 
@@ -482,18 +495,6 @@ function parseDrawResult(log, latest) {
   }
   if (!encoded) {
     const completedSteps = steps.filter((item) => item.status === "ok").length;
-    if (latest.status && latest.status !== "completed") {
-      return {
-        status: latest.status,
-        completion: { percent: Math.round((completedSteps / 6) * 100), completed: completedSteps, total: 6, unit: "个阶段" },
-        summary: ["画图任务正在运行，阶段状态来自当前 GitHub Actions 日志"],
-        successes: [],
-        warnings: [],
-        issues: [],
-        steps,
-        issue_count: 0,
-      };
-    }
     const failure = fatalIssue(lines) || (latest.conclusion === "success" ? "画图运行完成，但未找到结构化结果" : "画图运行失败，请打开 GitHub 日志查看");
     return {
       status: latest.conclusion === "success" ? "partial" : "failure",
@@ -512,6 +513,7 @@ function parseDrawResult(log, latest) {
     success: "success",
     needs_review: "partial",
     partial: "partial",
+    delivery_pending: "delivery_pending",
     failure: "failure",
     failed: "failure",
     timed_out: "failure",
@@ -526,9 +528,9 @@ function parseDrawResult(log, latest) {
   return {
     status,
     completion: { percent: status === "success" ? 100 : 83, completed: status === "success" ? 6 : 5, total: 6, unit: "个阶段" },
-    summary: [status === "success" ? "画图流程已完成" : status === "partial" ? "候选结果已生成，仍需人工复核" : status === "cancelled" ? "画图任务已取消" : "画图任务未成功完成"],
-    successes: status === "success" ? [{ title: "画图交付", detail: "已完成并通过正式门控" }] : [],
-    issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : "需要复核", cause: message, action: "按提示核对后重新执行订单。", reason: message })),
+    summary: [status === "success" ? "画图流程已完成" : status === "delivery_pending" ? "画图与复核已完成，Drive交付待补" : status === "partial" ? "候选结果已生成，仍需人工复核" : status === "cancelled" ? "画图任务已取消" : "画图任务未成功完成"],
+    successes: ["success", "delivery_pending"].includes(status) ? [{ title: "画图处理", detail: "DXF已完成并通过正式复核门控" }] : [],
+    issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : status === "delivery_pending" ? "Drive交付待处理" : "需要复核", cause: message, action: status === "delivery_pending" ? "DXF和正式复核已完成；按交付提示补传Drive。" : "按提示核对后重新执行订单。", reason: message })),
     warnings: [],
     drive_url: payload.drive_url || null,
     zip_download_url: payload.zip_download_url || null,
