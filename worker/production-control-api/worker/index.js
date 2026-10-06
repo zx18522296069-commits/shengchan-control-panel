@@ -458,10 +458,28 @@ function parseDrawResult(log, latest) {
     stepMap.set(index, { status: match[2] || "pending", text: match[3] || "等待任务数据" });
   }
   const steps = Array.from({ length: 6 }, (_, index) => stepMap.get(index) || { status: "pending", text: "等待任务数据" });
-  const encoded = lines
-    .map((line) => line.match(/^(?:DRAW_RESULT_JSON|DRAW_FINAL_RESULT_JSON)=(\{.*\})$/)?.[1])
+  const finalEncoded = lines
+    .map((line) => line.match(/^DRAW_FINAL_RESULT_JSON=(\{.*\})$/)?.[1])
     .filter(Boolean)
     .at(-1);
+  const candidateEncoded = lines
+    .map((line) => line.match(/^DRAW_RESULT_JSON=(\{.*\})$/)?.[1])
+    .filter(Boolean)
+    .at(-1);
+  const encoded = finalEncoded || candidateEncoded;
+  if (latest.status && latest.status !== "completed") {
+    const completedSteps = steps.filter((item) => item.status === "ok").length;
+    return {
+      status: latest.status,
+      completion: { percent: Math.round((completedSteps / 6) * 100), completed: completedSteps, total: 6, unit: "个阶段" },
+      summary: ["画图任务正在运行，阶段状态来自当前 GitHub Actions 日志"],
+      successes: [],
+      warnings: [],
+      issues: [],
+      steps,
+      issue_count: 0,
+    };
+  }
   if (!encoded) {
     const completedSteps = steps.filter((item) => item.status === "ok").length;
     if (latest.status && latest.status !== "completed") {
@@ -489,12 +507,26 @@ function parseDrawResult(log, latest) {
   let payload;
   try { payload = JSON.parse(encoded); } catch { throw new Error("画图运行结果格式无法读取"); }
   const rawStatus = String(payload.status || "").toLowerCase();
-  const status = rawStatus === "completed" ? "success" : rawStatus === "needs_review" ? "partial" : "failure";
+  const mappedStatus = {
+    completed: "success",
+    success: "success",
+    needs_review: "partial",
+    partial: "partial",
+    failure: "failure",
+    failed: "failure",
+    timed_out: "failure",
+    action_required: "failure",
+    cancelled: "cancelled",
+    canceled: "cancelled",
+  }[rawStatus] || "partial";
+  const status = latest.conclusion && latest.conclusion !== "success"
+    ? (latest.conclusion === "cancelled" ? "cancelled" : "failure")
+    : mappedStatus;
   const alerts = Array.isArray(payload.alerts) ? payload.alerts.map(String) : [];
   return {
     status,
     completion: { percent: status === "success" ? 100 : 83, completed: status === "success" ? 6 : 5, total: 6, unit: "个阶段" },
-    summary: [status === "success" ? "画图流程已完成" : "候选结果已生成，仍需人工复核"],
+    summary: [status === "success" ? "画图流程已完成" : status === "partial" ? "候选结果已生成，仍需人工复核" : status === "cancelled" ? "画图任务已取消" : "画图任务未成功完成"],
     successes: status === "success" ? [{ title: "画图交付", detail: "已完成并通过正式门控" }] : [],
     issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : "需要复核", cause: message, action: "按提示核对后重新执行订单。", reason: message })),
     warnings: [],
