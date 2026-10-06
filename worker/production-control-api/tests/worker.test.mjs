@@ -157,6 +157,7 @@ global.fetch = async (url) => {
     "DRAW_STEP=0|ok|✅ 已定位订单",
     "DRAW_STEP=1|ok|✅ PDF解析完成",
     "DRAW_STEP=2|running|正在生成DXF",
+    'DRAW_RESULT_JSON={"status":"needs_review","alerts":["阶段候选结果尚未完成最终门控"]}',
   ].join("\n"));
   if (target.includes("/weijiagong-lingjian-guidang/actions/workflows/") && target.includes("/runs?")) {
     return Response.json({ workflow_runs: [{
