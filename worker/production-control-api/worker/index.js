@@ -819,7 +819,7 @@ async function handle(request, env) {
   const url = new URL(request.url);
   const origin = request.headers.get("origin") || "";
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-  if (origin && origin !== ALLOWED_ORIGIN) return json({ detail: "来源不允许" }, 403, origin);
+  if (origin && !isAllowedOrigin(origin)) return json({ detail: "来源不允许" }, 403, origin);
   if (url.pathname === "/" && request.method === "GET") {
     return json({
       status: "ok",
