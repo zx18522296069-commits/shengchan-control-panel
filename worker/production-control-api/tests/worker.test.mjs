@@ -420,5 +420,51 @@ assert.equal(isolatedPayload.links.length, 3);
 assert.equal(isolatedPayload.links[1].url, "https://drive.example/198");
 assert.equal(isolatedPayload.links[2].url, "https://github.example/198.zip");
 
+// A later review_complete commit must replace the earlier ready.json run for the same order.
+let pickedRun = 201;
+const followupCalls = [];
+global.fetch = async (url) => {
+  const target = String(url);
+  followupCalls.push(target);
+  if (target.includes("/pdf-dxf-huatu/commits?") && target.includes("ready.json")) {
+    return Response.json([{ sha: "readysha", commit: { committer: { date: "2026-09-22T00:00:00Z" } } }]);
+  }
+  if (target.includes("/pdf-dxf-huatu/commits?") && target.includes("review_complete.json")) {
+    return Response.json([{ sha: "reviewsha", commit: { committer: { date: "2026-09-22T00:10:00Z" } } }]);
+  }
+  if (target.includes("/actions/workflows/chat-draw.yml/runs?") && target.includes("head_sha=readysha")) {
+    return Response.json({ workflow_runs: [{
+      id: 200, run_number: 70, status: "completed", conclusion: "success",
+      created_at: "2026-09-22T00:01:00Z", event: "push", html_url: "https://example.test/run/200",
+    }] });
+  }
+  if (target.includes("/actions/workflows/chat-draw.yml/runs?") && target.includes("head_sha=reviewsha")) {
+    return Response.json({ workflow_runs: [{
+      id: pickedRun, run_number: 71, status: "completed", conclusion: "success",
+      created_at: "2026-09-22T00:11:00Z", event: "push", html_url: "https://example.test/run/201",
+    }] });
+  }
+  if (target.includes("/actions/runs/201/jobs")) return Response.json({ jobs: [{ id: 921, name: "draw" }] });
+  if (target.includes("/actions/jobs/921/logs")) return new Response([
+    "DRAW_FINAL_STEP=0|ok|✅ 候选已处理",
+    "DRAW_FINAL_STEP=1|ok|✅ PDF解析完成",
+    "DRAW_FINAL_STEP=2|ok|✅ DXF生成完成",
+    "DRAW_FINAL_STEP=3|ok|✅ 正式复核完成",
+    "DRAW_FINAL_STEP=4|ok|✅ ZIP终检完成",
+    "DRAW_FINAL_STEP=5|ok|Drive待补传",
+    'DRAW_FINAL_RESULT_JSON={"status":"delivery_pending","order_name":"198","alerts":["Drive上传需要重试"]}',
+  ].join("\n"));
+  return Response.json({});
+};
+const followupResult = await worker.fetch(request("/api/results/draw?draw_order=198"), env);
+assert.equal(followupResult.status, 200);
+const followupPayload = await followupResult.json();
+assert.equal(followupPayload.run_id, 201);
+assert.equal(followupPayload.status, "delivery_pending");
+assert.deepEqual(followupPayload.completion, { percent: 100, completed: 6, total: 6, unit: "个阶段" });
+assert.match(followupPayload.summary[0], /Drive交付待补/);
+assert.ok(followupCalls.some((url) => url.includes("review_complete.json")));
+assert.ok(followupCalls.some((url) => url.includes("head_sha=reviewsha")));
+
 global.fetch = originalFetch;
 console.log("Worker routes, dispatch, incremental status, PDF parsing, order-isolated drawing status, final ZIP, control-panel scheduling, and dedup tests passed");
