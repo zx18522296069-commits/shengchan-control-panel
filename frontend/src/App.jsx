@@ -10,7 +10,7 @@ const TASKS = {
 };
 
 const STATUS_TEXT = {
-  success: '成功', partial: '部分完成', failure: '失败', cancelled: '已取消', in_progress: '运行中',
+  success: '成功', partial: '部分完成', delivery_pending: 'Drive交付待补', failure: '失败', cancelled: '已取消', in_progress: '运行中',
   queued: '排队中', requested: '已提交', waiting: '等待中', no_runs: '暂无记录',
   token_missing: '服务未配置', api_error: '读取失败', unknown: '未知',
 };
