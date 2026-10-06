@@ -527,7 +527,7 @@ function parseDrawResult(log, latest) {
   const alerts = Array.isArray(payload.alerts) ? payload.alerts.map(String) : [];
   return {
     status,
-    completion: { percent: status === "success" ? 100 : 83, completed: status === "success" ? 6 : 5, total: 6, unit: "个阶段" },
+    completion: { percent: ["success", "delivery_pending"].includes(status) ? 100 : 83, completed: ["success", "delivery_pending"].includes(status) ? 6 : 5, total: 6, unit: "个阶段" },
     summary: [status === "success" ? "画图流程已完成" : status === "delivery_pending" ? "画图与复核已完成，Drive交付待补" : status === "partial" ? "候选结果已生成，仍需人工复核" : status === "cancelled" ? "画图任务已取消" : "画图任务未成功完成"],
     successes: ["success", "delivery_pending"].includes(status) ? [{ title: "画图处理", detail: "DXF已完成并通过正式复核门控" }] : [],
     issues: alerts.map((message) => ({ title: "画图提示", record_status: status === "failure" ? "失败" : status === "delivery_pending" ? "Drive交付待处理" : "需要复核", cause: message, action: status === "delivery_pending" ? "DXF和正式复核已完成；按交付提示补传Drive。" : "按提示核对后重新执行订单。", reason: message })),
