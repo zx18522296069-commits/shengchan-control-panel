@@ -1,0 +1,41 @@
+name: Publish Independent GitHub Pages Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "github-pages-ui/**"
+      - ".github/workflows/deploy-github-pages-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: independent-pages-ui
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish split and parts control page
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload independent static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: github-pages-ui
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
