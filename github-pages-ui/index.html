@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1322">
+<title>火切 · 生产任务入口</title>
+<style>
+:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft Yahei",system-ui,sans-serif;background:#0b1322;color:#ecf2fc}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse 70% 40% at 83% -10%,#193251 0%,transparent 75%),#0b1322}
+button,input{font:inherit}button{cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}
+a{color:#99c5ff;text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1120px;margin:auto;padding:40px 22px 76px}
+.head{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:27px}
+.eyebrow{font-size:11px;font-weight:800;letter-spacing:.18em;color:#8caccd;margin:0 0 8px}
+h1{font-size:clamp(25px,4vw,36px);letter-spacing:-.035em;margin:0}
+.desc{color:#92a8c0;margin:10px 0 0;line-height:1.65;font-size:14px}
+.header-actions{display:flex;align-items:center;gap:9px}
+.tag{font-size:12px;white-space:nowrap;border:1px solid #2b4058;border-radius:999px;padding:7px 12px;color:#abbed2}
+.btn{padding:10px 14px;border-radius:10px;border:1px solid #334a65;background:#162942;color:#e1edfa;font-weight:750;transition:background .15s}
+.btn:hover:not(:disabled){background:#204067}
+.btn.primary{color:#fff;border-color:#3272c5;background:#2466b5}
+.btn.primary:hover:not(:disabled){background:#317bd2}
+.btn.purple{background:#6741c1;border-color:#8561df}.btn.purple:hover:not(:disabled){background:#8159df}
+.btn.quiet{background:transparent}
+.notice{margin:0 0 20px;border:1px solid #30465f;background:#12233a;border-radius:12px;padding:12px 15px;color:#b6cbe0;font-size:13px;line-height:1.65}
+.notice.error{color:#ffc0c5;border-color:#713b4a;background:#321e2b}
+.notice.success{color:#a5eccf;border-color:#2d6553;background:#142c2a}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}
+.card{background:#111e31;border:1px solid #2b3e57;border-radius:18px;padding:23px;box-shadow:0 18px 45px rgba(0,0,0,.14)}
+.card.split{border-top:3px solid #9070f0}.card.parts{border-top:3px solid #52a9ff}
+.cardtop{display:flex;justify-content:space-between;align-items:start;gap:10px}
+.card h2{margin:4px 0 0;font-size:23px;letter-spacing:-.035em}
+.card .sub{font-size:13px;color:#92a9c1;line-height:1.7;margin:10px 0 18px;min-height:44px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:#223249;color:#a5b8ce;border:1px solid #3b4b61;border-radius:999px;font-size:12px;padding:5px 9px;white-space:nowrap}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:#8ea1b8}
+.badge.ok::before{background:#33d8a0}.badge.active::before{background:#f8bf5d}.badge.bad::before{background:#fc758b}
+.field{display:flex;justify-content:space-between;align-items:start;gap:10px;border-top:1px solid #253751;padding:11px 0;font-size:13px}
+.field span{color:#859db8}.field strong{text-align:right;font-size:12px;font-weight:650;overflow-wrap:anywhere;max-width:70%}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:17px}
+.card .statusline{color:#9db5ce;font-size:12px;margin:13px 0 0;line-height:1.65;min-height:20px}
+.results{margin-top:20px}.reshead{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}
+.results h2{margin:0;font-size:21px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:19px}
+.metric{background:#182b43;border:1px solid #2a425c;border-radius:12px;padding:13px}.metric span{color:#92acc7;font-size:12px;display:block}.metric strong{font-size:25px;display:block;margin-top:4px}
+.tablewrap{overflow-x:auto}.table{width:100%;border-collapse:separate;border-spacing:0 7px;text-align:left;font-size:12px;min-width:680px}
+.table th{color:#9db4cc;font-size:12px;padding:0 12px}.table td{background:#172a41;border-top:1px solid #2a405b;border-bottom:1px solid #2a405b;padding:13px 12px;overflow-wrap:anywhere;vertical-align:top;line-height:1.6}
+.table tr td:first-child{border-left:1px solid #2a405b;border-radius:9px 0 0 9px;font-weight:700}.table tr td:last-child{border-right:1px solid #2a405b;border-radius:0 9px 9px 0}
+.empty{text-align:center;color:#91a9bf;border:1px dashed #3a506b;border-radius:10px;padding:30px 14px}
+.links{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:13px}
+.foot{color:#758ca6;font-size:12px;margin-top:24px;line-height:1.75}
+.login{position:fixed;inset:0;background:rgba(3,10,21,.86);backdrop-filter:blur(13px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+.login[hidden],.results[hidden]{display:none}
+.loginbox{background:#122238;border:1px solid #36506d;padding:28px;border-radius:19px;width:min(410px,100%);box-shadow:0 25px 95px rgba(0,0,0,.42)}
+.loginbox h2{margin:0;font-size:26px}.loginbox p{font-size:13px;color:#99aec4;line-height:1.7}
+.loginbox input{display:block;width:100%;padding:13px;background:#0c192a;color:#f5f9ff;border:1px solid #38516f;border-radius:11px;margin:18px 0 12px}
+.loginbox .btn{width:100%}
+#loginError{min-height:23px;color:#ffacbc;font-size:12px;margin:12px 0 0}
+@media(max-width:760px){.wrap{padding:26px 13px 52px}.grid{grid-template-columns:1fr}.head{align-items:start;flex-direction:column}.header-actions{width:100%;justify-content:space-between}.metrics{grid-template-columns:repeat(2,1fr)}.card{padding:19px}.reshead{align-items:start;flex-direction:column}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="head">
+    <div><p class="eyebrow">火切 · GITHUB PAGES 独立入口</p><h1>生产任务控制台</h1><p class="desc">拆图与未加工零件归档 · 继续使用原有 GitHub Actions 和 Google Drive。</p></div>
+    <div class="header-actions"><span class="tag">自动刷新已关闭</span><button class="btn quiet" id="logoutBtn" type="button">退出</button></div>
+  </header>
+  <div class="notice" id="globalNotice" role="status" aria-live="polite">状态仅在手动点击时更新。本网页不使用 Vercel，不会自动发送轮询请求。</div>
+  <section class="grid">
+    <article class="card split">
+      <div class="cardtop"><div><p class="eyebrow">任务 01</p><h2>拆图</h2></div><span class="badge" id="badge-split">未查询</span></div>
+      <p class="sub">读取待拆 PDF / 图片，按现有规则匹配零件，生成原格式的拆图 Excel。</p>
+      <div class="field"><span>当前状态</span><strong id="state-split">等待手动刷新</strong></div>
+      <div class="field"><span>最后执行</span><strong id="time-split">—</strong></div>
+      <div class="field"><span>工作流</span><strong>tuzhichaifen · split_drawing.yml</strong></div>
+      <div class="actions"><button class="btn purple" id="run-split">立即执行</button><button class="btn" id="status-split">刷新状态</button><button class="btn" id="result-split">查看结果</button></div>
+      <p class="statusline" id="hint-split">执行生产模式会写入 Google Drive，成功后按原规则为源文件添加“完成_”。</p>
+      <div class="links"><a href="https://github.com/zx18522296069-commits/tuzhichaifen/actions/workflows/split_drawing.yml" target="_blank" rel="noopener noreferrer">GitHub 执行记录 ↗</a><a href="https://drive.google.com/drive/folders/1lr9AUd9hO81Ylbkt4iJf88og4aazC797" target="_blank" rel="noopener noreferrer">拆图结果文件夹 ↗</a></div>
+    </article>
+    <article class="card parts">
+      <div class="cardtop"><div><p class="eyebrow">任务 02</p><h2>未加工图纸归档</h2></div><span class="badge" id="badge-parts">未查询</span></div>
+      <p class="sub">读取拆图结果，核对订单与累计台账，更新当前待加工零件并归档已录入板材。</p>
+      <div class="field"><span>当前状态</span><strong id="state-parts">等待手动刷新</strong></div>
+      <div class="field"><span>最后执行</span><strong id="time-parts">—</strong></div>
+      <div class="field"><span>工作流</span><strong>weijiagong-lingjian-guidang · update_parts.yml</strong></div>
+      <div class="actions"><button class="btn primary" id="run-parts">立即执行</button><button class="btn" id="status-parts">刷新状态</button><button class="btn" id="result-parts">查看结果</button></div>
+      <p class="statusline" id="hint-parts">生产运行保留原有完整校验、批量入账、异常冻结和整单归档规则。</p>
+      <div class="links"><a href="https://github.com/zx18522296069-commits/weijiagong-lingjian-guidang/actions/workflows/update_parts.yml" target="_blank" rel="noopener noreferrer">GitHub 执行记录 ↗</a><a href="https://drive.google.com/open?id=1Lw91mzMQkqEx4sAn_U6JgHaDfa6bQpUG" target="_blank" rel="noopener noreferrer">当前待加工零件 ↗</a><a href="https://drive.google.com/open?id=1BDXfJN8afgla9Z9Al-tVQmqP107afkPb" target="_blank" rel="noopener noreferrer">累计加工台账 ↗</a></div>
+    </article>
+  </section>
+  <section class="card results" id="resultPanel" hidden>
+    <div class="reshead"><div><p class="eyebrow">最近一次运行</p><h2 id="resultTitle">运行结果</h2></div><button class="btn" id="closeResult">收起结果</button></div>
+    <div class="metrics" id="metrics"></div>
+    <div id="resultRows" class="tablewrap"></div>
+  </section>
+  <p class="foot">独立 GitHub Pages 网页，不调用 Vercel 代理接口 · 浏览器不保存 GitHub Token · 登录口令只保存在当前标签页会话中 · 不自动执行任务、不自动刷新状态。<br>本页只负责操作与显示；PDF 识别、数量匹配、正式 Excel 内容及归档仍由原 GitHub Actions 决定。</p>
+</main>
+<div class="login" id="login">
+  <form class="loginbox" id="loginForm">
+    <p class="eyebrow">内部操作验证</p><h2>火切生产控制台</h2>
+    <p>请输入原生产控制台的操作口令。此网页独立于 Vercel，不要求在浏览器里填写 GitHub Token。</p>
+    <input type="password" name="controlKey" id="password" autocomplete="current-password" placeholder="操作口令" required>
+    <button class="btn primary" type="submit" id="loginButton">进入控制台</button>
+    <div id="loginError" role="alert"></div>
+  </form>
+</div>
+<script>
+"use strict";
+const API="https://production-control-api.zx18522296069.chatgpt.site";
+const KEY="firecut-gh-pages-control-key";
+const TASKS={
+ split:{label:"拆图",run:"/api/run/split",results:"/api/results/split"},
+ parts:{label:"未加工图纸归档",run:"/api/run/parts",results:"/api/results/parts"}
+};
+const STATE_LABEL={success:"成功",partial:"部分完成",failure:"失败",cancelled:"已取消",in_progress:"运行中",queued:"排队中",requested:"已提交",waiting:"等待中",no_runs:"暂无记录",api_error:"读取失败",unknown:"未知"};
+const $=id=>document.getElementById(id);
+const key=()=>sessionStorage.getItem(KEY)||"";
+const active=x=>["in_progress","queued","requested","waiting"].includes(x);
+const formatted=s=>{if(!s)return "—";const d=new Date(s);return isNaN(d.getTime())?"—":d.toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:false})};
+function inform(msg,type=""){$("globalNotice").textContent=msg;$("globalNotice").className="notice "+type}
+function node(tag,txt,cls){const el=document.createElement(tag);if(txt!==undefined)el.textContent=String(txt);if(cls)el.className=cls;return el}
+function logout(msg){sessionStorage.removeItem(KEY);$("login").hidden=false;$("password").value="";$("loginError").textContent=msg||""}
+async function request(path,options={}){
+ const response=await fetch(API+path,{method:options.method||"GET",headers:{"Content-Type":"application/json","X-Control-Key":key()},cache:"no-store"});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok||data?.status==="error"){
+   const msg=data?.detail||data?.message||("请求失败："+response.status);
+   if(response.status===401)logout("操作口令错误或已失效");
+   throw new Error(msg);
+ }
+ return data;
+}
+function showStatus(task,s){
+ const st=String(s?.status||"unknown");
+ $("badge-"+task).textContent=STATE_LABEL[st]||st;
+ $("badge-"+task).className="badge "+(st==="success"?"ok":active(st)||st==="partial"?"active":["failure","cancelled","api_error"].includes(st)?"bad":"");
+ $("state-"+task).textContent=STATE_LABEL[st]||st;
+ $("time-"+task).textContent=formatted(s?.updated_at||s?.run_started_at);
+ $("run-"+task).disabled=active(st);
+ $("hint-"+task).textContent=s?.detail||(s?.html_url?"可查看 GitHub 执行记录，核对运行日志。":"结果以真实 GitHub Actions 运行状态为准。");
+ if(s?.html_url){const a=document.createElement("a");a.href=s.html_url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=" 打开本次运行 ↗";$("hint-"+task).appendChild(a)}
+}
+async function refresh(task){
+ $("status-"+task).disabled=true;
+ try{
+   const data=await request("/api/status");
+   for(const name of ["split","parts"])showStatus(name,data?.[name]||{status:"unknown"});
+   inform("已读取 GitHub Actions 最新状态（北京时间："+formatted(new Date().toISOString())+"）。","success");
+ }catch(e){inform("读取失败："+e.message,"error")}
+ finally{$("status-"+task).disabled=false}
+}
+async function run(task){
+ const t=TASKS[task];
+ if(!confirm("确认立即正式执行「"+t.label+"」吗？\n此操作会按原业务规则写回 Google Drive。"))return;
+ $("run-"+task).disabled=true;
+ inform("正在提交「"+t.label+"」正式运行…");
+ try{
+   await request(t.run,{method:"POST"});
+   showStatus(task,{status:"requested",updated_at:new Date().toISOString()});
+   inform("「"+t.label+"」任务已提交到 GitHub Actions。需要最新进度时点击“刷新状态”。","success");
+ }catch(e){inform("提交失败："+e.message,"error");$("run-"+task).disabled=false}
+}
+function itemTitle(x){return x?.board_id||x?.title||x?.filename||x?.source_name||"—"}
+function itemDesc(x){return x?.cause||x?.reason||x?.detail||x?.record_status||"—"}
+function isFailure(x){const v=String(x?.record_status||"")+" "+itemDesc(x);return /未累计|未记录|阻断|冲突|失败|异常|未成功/.test(v)}
+function isDuplicate(x){const v=String(x?.record_status||"")+" "+itemDesc(x);return /仅补归档|重复已处理|已处理过|未重复累计/.test(v)}
+function rowsFor(task,data){
+ if(task==="split"){
+   const ok=Array.isArray(data.successes)?data.successes:[];
+   const bad=Array.isArray(data.issues)?data.issues:[];
+   const skip=Array.isArray(data.warnings)?data.warnings:[];
+   const total=Math.max(Number(data?.completion?.total||0),ok.length+bad.length+skip.length);
+   return {stats:[["本次扫描",total],["成功拆出",ok.length],["未拆出",bad.length],["警告/跳过",skip.length]],
+     rows:[...bad.map(x=>({...x,_status:"未拆出"})),...skip.map(x=>({...x,_status:"警告/跳过"})),...ok.map(x=>({...x,_status:"成功"}))]};
+ }
+ const source=Array.isArray(data.board_results)&&data.board_results.length?data.board_results:
+ [...(Array.isArray(data.successes)?data.successes:[]),...(Array.isArray(data.issues)?data.issues:[])];
+ const dedup=new Map();
+ const sourceIssues=[];
+ for(const x of source){
+   const title=itemTitle(x);
+   if(x.board_id||/^#|^废\d/.test(title)||/板材/.test(title))dedup.set(title,x);
+   else sourceIssues.push({...x,_status:"资料异常"});
+ }
+ const boards=[...dedup.values()];
+ const ok=boards.filter(x=>!isFailure(x)&&!isDuplicate(x));
+ const duplicate=boards.filter(x=>!isFailure(x)&&isDuplicate(x));
+ const failed=boards.filter(isFailure);
+ return {stats:[["本次扫描",boards.length],["成功录入",ok.length],["重复已处理",duplicate.length],["未成功",failed.length]],rows:[
+ ...failed.map(x=>({...x,_status:"未成功"})),...sourceIssues,...duplicate.map(x=>({...x,_status:"重复已处理"})),...ok.map(x=>({...x,_status:"成功录入"}))]};
+}
+async function result(task){
+ $("resultPanel").hidden=false;
+ $("resultTitle").textContent=TASKS[task].label+" · 最近运行结果";
+ $("metrics").replaceChildren();
+ $("resultRows").replaceChildren(node("div","正在读取运行结果…","empty"));
+ try{
+   const data=await request(TASKS[task].results);
+   const obj=rowsFor(task,data);
+   $("metrics").replaceChildren(...obj.stats.map(([label,value])=>{const div=node("div",undefined,"metric");div.appendChild(node("span",label));div.appendChild(node("strong",value));return div}));
+   if(!obj.rows.length){$("resultRows").replaceChildren(node("div","本轮没有可展示的逐项记录。","empty"))}
+   else{
+     const table=node("table",undefined,"table");
+     const head=node("thead");const tr=node("tr");
+     for(const h of ["原始文件/板材","处理结果","具体说明"])tr.appendChild(node("th",h));head.appendChild(tr);table.appendChild(head);
+     const body=node("tbody");
+     for(const x of obj.rows){
+       const row=node("tr");for(const txt of [itemTitle(x),x._status||x.record_status||"—",itemDesc(x)])row.appendChild(node("td",txt));
+       body.appendChild(row);
+     }
+     table.appendChild(body);$("resultRows").replaceChildren(table);
+   }
+   inform("已读取「"+TASKS[task].label+"」最近一次结果。","success");
+ }catch(e){$("resultRows").replaceChildren(node("div","读取失败："+e.message,"empty"));inform("读取结果失败："+e.message,"error")}
+ $("resultPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+for(const task of ["split","parts"]){
+ $("run-"+task).addEventListener("click",()=>run(task));
+ $("status-"+task).addEventListener("click",()=>refresh(task));
+ $("result-"+task).addEventListener("click",()=>result(task));
+}
+$("closeResult").onclick=()=>$("resultPanel").hidden=true;
+$("logoutBtn").onclick=()=>{logout();inform("已退出，停止所有控制台请求。")};
+$("loginForm").onsubmit=async e=>{
+ e.preventDefault();
+ const candidate=$("password").value.trim();if(!candidate)return;
+ $("loginButton").disabled=true;$("loginError").textContent="";
+ sessionStorage.setItem(KEY,candidate);
+ try{
+   // Verify the password without starting or scheduling any production job.
+   const data=await request("/api/status");
+   $("login").hidden=true;$("password").value="";
+   for(const name of ["split","parts"])showStatus(name,data?.[name]||{status:"unknown"});
+   inform("已连接生产控制服务。后续只有点击按钮才会再次请求。","success");
+ }catch(err){sessionStorage.removeItem(KEY);$("loginError").textContent=err.message}
+ finally{$("loginButton").disabled=false}
+};
+// No timers, background polling, visibility refresh, or automatic requests.
+if(key()){$("login").hidden=true;inform("已恢复当前标签页会话。请按“刷新状态”查询最新情况。")}
+</script>
+</body>
+</html>
