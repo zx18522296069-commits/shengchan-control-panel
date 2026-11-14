@@ -223,11 +223,18 @@ function splitFailureDetails(item){
     }
     if(entry.note)row.appendChild(node("p",entry.note));
     if(Array.isArray(entry.alternatives)&&entry.alternatives.length){
-      row.appendChild(node("small","有多个疑似汇总表记录，无法唯一确认，请人工核对。"));
+      row.appendChild(node("small","下面是同样接近的候选汇总表行，未能确认唯一对应项："));
+      for(const candidate of entry.alternatives){
+        const where=[candidate.path,candidate.workbook,candidate.row?"第 "+candidate.row+" 行":""].filter(Boolean).join(" / ");
+        row.appendChild(node("small",where+"｜订单 "+(candidate.order_no||"—")+"｜图号 "+(candidate.drawing_no||"—")+"｜T"+(candidate.thickness||"—")+"｜"+(candidate.base_quantity??"—")+"J｜"+(candidate.bevel||"—")));
+      }
+    }
+    if(Array.isArray(entry.searched_workbooks)&&entry.searched_workbooks.length){
+      row.appendChild(node("small","已查询同订单汇总表："+entry.searched_workbooks.map(x=>x.path+"/"+x.workbook).join("；")));
     }
     box.appendChild(row);
   }
-  if(!checks.length && item.file_check && item.file_check.note){
+  if(item.file_check && item.file_check.note){
     box.appendChild(node("small",item.file_check.note));
   }
   return box;
