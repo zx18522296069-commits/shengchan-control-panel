@@ -271,9 +271,9 @@ async function result(task){
            // Show these in the SAME description cell; do not pretend that
            // actual/source values were returned.
            explanation.appendChild(node("div",itemDesc(x).replace(/；请在前端查看逐号差异/g,""),"split-failure-heading"));
-           const match=String(x.cause||x.reason||"").match(/问题序号[：:]\\s*([0-9,，、\\s]+)/);
+           const match=String(x.cause||x.reason||"").match(/问题序号[：:]\s*([0-9,，、\s]+)/);
            if(match){
-             const nums=[...new Set(match[1].split(/[,，、\\s]+/).filter(Boolean))];
+             const nums=[...new Set(match[1].split(/[,，、\s]+/).filter(Boolean))];
              const notice=node("div",undefined,"split-check-box");
              notice.appendChild(node("div","未拆出零件序号："+nums.map(n=>"第 "+n+" 号").join("、"),"split-check-summary"));
              notice.appendChild(node("small","当前结果接口只提供序号，没有返回各号对应的图纸字段、汇总表文件与Excel行号；这些内容尚不能核实，不能猜测。"));
