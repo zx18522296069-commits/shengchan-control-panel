@@ -232,14 +232,42 @@ function splitSummaryText(item){
   return itemDesc(item)
     .replace(/；?SPLIT_INLINE_B64:[A-Za-z0-9_-]+/g,"")
     .replace(/；请在前端查看逐号差异/g,"")
+    .replace(/【第\\d+号[^】]*】/g,"")
+    .replace(/；+/g,"；")
+    .replace(/；\\s*$/,"")
     .trim();
 }
 function splitFailureDetails(item){
   const packed=inlineSplitReport(item);
   const checks=Array.isArray(item.checks)&&item.checks.length?item.checks:(packed?.rows||[]);
   const problems=checks.filter(x=>x.status!=="通过");
-  if(!checks.length && !(item.file_check && item.file_check.note))return null;
+  const plain=[item?.cause,item?.reason].filter(Boolean).join(" ");
+  const plainDetails=[...plain.matchAll(/【第\\d+号[^】]*】/g)].map(x=>x[0]);
+  if(!checks.length && !(item.file_check && item.file_check.note) && !plainDetails.length)return null;
   const box=node("div",undefined,"split-check-box");
+  if(!checks.length && plainDetails.length){
+    box.appendChild(node("div","逐号核对结果 · "+plainDetails.length+" 个问题","split-check-summary"));
+    for(const detail of plainDetails){
+      const entry=node("div",undefined,"split-check-entry");
+      const txt=detail.slice(1,-1);
+      const parts=txt.split("；");
+      entry.appendChild(node("strong",parts.shift()));
+      for(const p of parts){
+        const match=p.match(/^([^：]+)：图纸 (.*?) \/ 汇总表 (.*)$/);
+        if(match){
+          const pair=node("div",undefined,"split-check-pair");
+          pair.appendChild(node("b",match[1]));
+          pair.appendChild(node("span","图纸："+match[2]));
+          pair.appendChild(node("span","汇总表："+match[3]));
+          entry.appendChild(pair);
+        }else{
+          entry.appendChild(node("small",p));
+        }
+      }
+      box.appendChild(entry);
+    }
+    return box;
+  }
   box.appendChild(node("div",checks.length?"逐号核对 "+checks.length+" 条｜通过 "+(checks.length-problems.length)+" 条｜需核对 "+problems.length+" 条":"识别问题","split-check-summary"));
   for(const entry of problems){
     const row=node("div",undefined,"split-check-entry");
