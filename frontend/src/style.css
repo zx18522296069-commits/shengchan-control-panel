@@ -601,3 +601,17 @@ input, select { width: 100%; min-height: 44px; padding: 9px 11px; color: #edf5ff
   .topbar-actions { gap: 6px; }
   .topbar-actions .icon-button { padding: 10px 12px; }
 }
+
+/* 拆图失败时逐号、逐字段对照：显示整段值，而非字符位置 */
+.split-compare-wrap{border:1px solid #ead9fd;background:#faf7ff;border-radius:12px;padding:12px 14px;margin:2px 0 14px}
+.split-compare-summary{font-weight:700;color:#4c1d95;margin-bottom:10px}
+.split-compare-entry{padding:12px 0;border-top:1px solid #e8dcf3}
+.split-compare-heading{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:5px}
+.split-compare-heading strong{color:#251441}
+.split-compare-heading span{font-size:12px;color:#9f1239;font-weight:700}
+.split-compare-entry small{display:block;color:#64748b;overflow-wrap:anywhere}
+.split-compare-entry p{margin:6px 0 0;color:#6d5184;font-size:13px}
+.split-segment-pair{display:grid;grid-template-columns:minmax(80px,.5fr) minmax(160px,1fr) minmax(160px,1fr);gap:10px;align-items:start;margin-top:9px;background:#fff;padding:10px;border:1px solid #e8dfef;border-radius:9px;overflow-wrap:anywhere}
+.split-segment-pair>strong{color:#7e22ce}.split-segment-pair span{font-variant-numeric:tabular-nums}
+.split-segment-pair b{color:#64748b;margin-right:4px}
+@media(max-width:620px){.split-segment-pair{grid-template-columns:1fr;gap:5px}}
