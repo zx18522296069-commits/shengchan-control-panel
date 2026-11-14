@@ -32,6 +32,9 @@ export function normalizeSplitResults(result) {
       cause: detail,
       action,
       priority,
+      checks: Array.isArray(item?.checks) ? item.checks : [],
+      file_check: item?.file_check || null,
+      filename: item?.filename || '',
     });
   };
 
@@ -63,6 +66,42 @@ export function normalizeSplitResults(result) {
   };
 }
 
+function SplitCheckDetails({ item }) {
+  const checks = Array.isArray(item.checks) ? item.checks : [];
+  if (!checks.length) {
+    return item.file_check?.note
+      ? <div className="split-compare-wrap"><p>{item.file_check.note}</p></div>
+      : null;
+  }
+  const problemRows = checks.filter((row) => row.status !== '通过');
+  const passed = checks.length - problemRows.length;
+  return (
+    <div className="split-compare-wrap">
+      <div className="split-compare-summary">逐号核对：{checks.length} 条 · 通过 {passed} 条 · 需核对 {problemRows.length} 条</div>
+      {problemRows.map((row) => (
+        <div className="split-compare-entry" key={row.index}>
+          <div className="split-compare-heading">
+            <strong>第 {row.index} 号{row.drawing_no ? ` · ${row.drawing_no}` : ''}</strong>
+            <span>{row.status}</span>
+          </div>
+          {row.source && <small>对照来源：{row.source.path} / {row.source.workbook}{row.source.row ? ` · Excel 第 ${row.source.row} 行` : ''}</small>}
+          {(row.differences || []).map((diff) => (
+            <div className="split-segment-pair" key={diff.field}>
+              <strong>{diff.label}</strong>
+              <span><b>图纸：</b>{diff.actual}</span>
+              <span><b>汇总表：</b>{diff.expected}</span>
+            </div>
+          ))}
+          {row.note && <p>{row.note}</p>}
+          {row.alternatives?.length > 0 && (
+            <small>存在 {row.alternatives.length} 个疑似对应行，不能确定唯一原值；请核对订单汇总表。</small>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SplitResultTable({ rows, type }) {
   const lastHeading = type === 'success' ? '文件去向' : '下一步怎么处理';
   return (
@@ -74,12 +113,15 @@ function SplitResultTable({ rows, type }) {
         <strong>{lastHeading}</strong>
       </div>
       {rows.map((item) => (
-        <div className={`board-result-row board-row-${type}`} role="row" key={`${type}-${item.board}`}>
-          <strong>{item.board}</strong>
-          <span>{item.record_status}</span>
-          <span>{item.cause}</span>
-          <span>{item.action}</span>
-        </div>
+        <React.Fragment key={`${type}-${item.board}`}>
+          <div className={`board-result-row board-row-${type}`} role="row">
+            <strong>{item.board}</strong>
+            <span>{item.record_status}</span>
+            <span>{item.cause}</span>
+            <span>{item.action}</span>
+          </div>
+          {type === 'failed' && <SplitCheckDetails item={item} />}
+        </React.Fragment>
       ))}
     </div>
   );
