@@ -427,14 +427,44 @@ function parseSplitResult(log, latest) {
   const successes = [];
   const issues = [];
   const warnings = [];
+  const rowChecks = new Map();
+  const fileChecks = new Map();
+
   for (const line of lines) {
+    // Python prints one JSON item per part, preserving the exact source Excel
+    // row and complete field segments; no character-position guessing.
+    const rowMarker = "SPLIT_CHECK_JSON=";
+    const fileMarker = "SPLIT_FILE_CHECK_JSON=";
+    if (line.includes(rowMarker)) {
+      try {
+        const data = JSON.parse(line.slice(line.indexOf(rowMarker) + rowMarker.length));
+        if (data.filename && Number.isInteger(data.index)) {
+          const rows = rowChecks.get(data.filename) || new Map();
+          rows.set(data.index, data);
+          rowChecks.set(data.filename, rows);
+        }
+      } catch { /* An incomplete log line is not a valid diagnostic. */ }
+      continue;
+    }
+    if (line.includes(fileMarker)) {
+      try {
+        const data = JSON.parse(line.slice(line.indexOf(fileMarker) + fileMarker.length));
+        if (data.filename) fileChecks.set(data.filename, data);
+      } catch { /* Keep the ordinary failure explanation. */ }
+      continue;
+    }
+
     let match = line.match(/^处理失败：(.+?)：(.+)$/);
-    if (match) issues.push({ title: match[1], record_status: "未拆出", cause: match[2], action: "核对该板图纸和基础资料后重新执行。", reason: match[2] });
+    if (match) {
+      issues.push({ title: match[1], record_status: "未拆出", cause: match[2], action: "核对该板图纸和基础资料后重新执行。", reason: match[2] });
+    }
     match = line.match(/^处理失败｜阶段=([^｜]+)｜文件=([^；]+)；([^｜]+)｜处理建议=(.+)$/);
     if (match) {
       const [, stage, filename, cause, action] = match;
       issues.push({
         title: splitBoardId(filename),
+        filename,
+        board_id: splitBoardId(filename),
         record_status: "未拆出",
         cause: `${stage}：${cause}`,
         action,
@@ -442,10 +472,32 @@ function parseSplitResult(log, latest) {
       });
     }
     match = line.match(/^(?:处理|验证)(?:成功|完成)[：:]\s*(.+?)\s*->\s*(.+)$/);
-    if (match) successes.push({ title: splitBoardId(match[1]), detail: `已生成 ${match[2].trim()}` });
+    if (match) successes.push({ title: splitBoardId(match[1]), filename: match[1], detail: `已生成 ${match[2].trim()}` });
     match = line.match(/^跳过不可读基础表：(.+?)：(.+)$/);
     if (match) warnings.push({ title: match[1], reason: match[2] });
   }
+
+  for (const [filename, summary] of fileChecks) {
+    if (summary.error_count > 0 && !issues.some((item) => item.filename === filename)) {
+      const cause = summary.note || `逐号检查发现 ${summary.error_count} 个问题`;
+      issues.push({
+        title: splitBoardId(filename), filename, board_id: splitBoardId(filename),
+        record_status: "未拆出", cause, reason: cause,
+        action: "打开逐号核对，查看图纸与汇总表不一致的整段字段。",
+      });
+    }
+  }
+
+  for (const item of issues) {
+    const filename = item.filename || [...rowChecks.keys(), ...fileChecks.keys()].find(
+      (name) => splitBoardId(name) === item.title,
+    );
+    if (!filename) continue;
+    const rows = rowChecks.get(filename);
+    item.checks = rows ? [...rows.values()].sort((a, b) => a.index - b.index) : [];
+    item.file_check = fileChecks.get(filename) || null;
+  }
+
   const fatal = fatalIssue(lines);
   if (fatal && !issues.length) issues.push({ title: "运行异常", record_status: "未拆出", cause: fatal, action: "打开 GitHub 运行日志核对后重新执行。", reason: fatal });
   const completed = Math.min(successes.length, total || successes.length);
