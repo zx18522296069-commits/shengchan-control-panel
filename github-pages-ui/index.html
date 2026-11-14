@@ -201,8 +201,31 @@ function rowsFor(task,data){
  return {stats:[["本次扫描",boards.length],["成功录入",ok.length],["重复已处理",duplicate.length],["未成功",failed.length]],rows:[
  ...failed.map(x=>({...x,_status:"未成功"})),...sourceIssues,...duplicate.map(x=>({...x,_status:"重复已处理"})),...ok.map(x=>({...x,_status:"成功录入"}))]};
 }
+function inlineSplitReport(item){
+  // 兼容尚未发布新版代码的控制API：它会原样转发GitHub Actions的失败原因。
+  const raw=[item?.cause,item?.reason,item?.detail].filter(Boolean).join(" ");
+  const encoded=raw.match(/SPLIT_INLINE_B64:([A-Za-z0-9_-]+)/)?.[1];
+  if(!encoded)return null;
+  try{
+    const b64=encoded.replace(/-/g,"+").replace(/_/g,"/");
+    const padded=b64.padEnd(Math.ceil(b64.length/4)*4,"=");
+    const binary=atob(padded);
+    const bytes=Uint8Array.from(binary,ch=>ch.charCodeAt(0));
+    const decoded=JSON.parse(new TextDecoder("utf-8").decode(bytes));
+    return decoded && Array.isArray(decoded.rows) ? decoded : null;
+  }catch{
+    return null;
+  }
+}
+function splitSummaryText(item){
+  return itemDesc(item)
+    .replace(/；?SPLIT_INLINE_B64:[A-Za-z0-9_-]+/g,"")
+    .replace(/；请在前端查看逐号差异/g,"")
+    .trim();
+}
 function splitFailureDetails(item){
-  const checks=Array.isArray(item.checks)?item.checks:[];
+  const packed=inlineSplitReport(item);
+  const checks=Array.isArray(item.checks)&&item.checks.length?item.checks:(packed?.rows||[]);
   const problems=checks.filter(x=>x.status!=="通过");
   if(!checks.length && !(item.file_check && item.file_check.note))return null;
   const box=node("div",undefined,"split-check-box");
@@ -263,14 +286,14 @@ async function result(task){
        if(task==="split"&&x._status==="未拆出"){
          const details=splitFailureDetails(x);
          if(details){
-           const heading=node("div",itemDesc(x).replace(/；请在前端查看逐号差异/g,""),"split-failure-heading");
+           const heading=node("div",splitSummaryText(x),"split-failure-heading");
            explanation.appendChild(heading);
            explanation.appendChild(details);
          }else{
            // Old server releases include just the failed index numbers in text.
            // Show these in the SAME description cell; do not pretend that
            // actual/source values were returned.
-           explanation.appendChild(node("div",itemDesc(x).replace(/；请在前端查看逐号差异/g,""),"split-failure-heading"));
+           explanation.appendChild(node("div",splitSummaryText(x),"split-failure-heading"));
            const match=String(x.cause||x.reason||"").match(/问题序号[：:]\s*([0-9,，、\s]+)/);
            if(match){
              const nums=[...new Set(match[1].split(/[,，、\s]+/).filter(Boolean))];
