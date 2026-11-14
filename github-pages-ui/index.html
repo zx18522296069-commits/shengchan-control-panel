@@ -232,9 +232,9 @@ function splitSummaryText(item){
   return itemDesc(item)
     .replace(/；?SPLIT_INLINE_B64:[A-Za-z0-9_-]+/g,"")
     .replace(/；请在前端查看逐号差异/g,"")
-    .replace(/【第\\d+号[^】]*】/g,"")
+    .replace(/【第\d+号[^】]*】/g,"")
     .replace(/；+/g,"；")
-    .replace(/；\\s*$/,"")
+    .replace(/；\s*$/,"")
     .trim();
 }
 function splitFailureDetails(item){
@@ -242,7 +242,7 @@ function splitFailureDetails(item){
   const checks=Array.isArray(item.checks)&&item.checks.length?item.checks:(packed?.rows||[]);
   const problems=checks.filter(x=>x.status!=="通过");
   const plain=[item?.cause,item?.reason].filter(Boolean).join(" ");
-  const plainDetails=[...plain.matchAll(/【第\\d+号[^】]*】/g)].map(x=>x[0]);
+  const plainDetails=[...new Set([...plain.matchAll(/【第\d+号[^】]*】/g)].map(x=>x[0]))];
   if(!checks.length && !(item.file_check && item.file_check.note) && !plainDetails.length)return null;
   const box=node("div",undefined,"split-check-box");
   if(!checks.length && plainDetails.length){
