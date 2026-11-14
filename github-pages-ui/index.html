@@ -59,7 +59,7 @@ h1{font-size:clamp(25px,4vw,36px);letter-spacing:-.035em;margin:0}
 #loginError{min-height:23px;color:#ffacbc;font-size:12px;margin:12px 0 0}
 @media(max-width:760px){.wrap{padding:26px 13px 52px}.grid{grid-template-columns:1fr}.head{align-items:start;flex-direction:column}.header-actions{width:100%;justify-content:space-between}.metrics{grid-template-columns:repeat(2,1fr)}.card{padding:19px}.reshead{align-items:start;flex-direction:column}}
 
-.split-check-box{margin:3px 0 10px;border:1px solid #544576;background:#201b37;border-radius:11px;padding:14px}
+.split-inline-cell{min-width:590px}.split-failure-heading{font-weight:650;margin:0 0 8px}.split-check-box{margin:3px 0 10px;border:1px solid #544576;background:#201b37;border-radius:11px;padding:14px}
 .split-check-summary{font-size:13px;font-weight:800;color:#d5c4ff;margin-bottom:8px}
 .split-check-entry{padding:12px 0;border-top:1px solid #473a60}
 .split-check-entry strong{color:#f1eaff}
@@ -67,7 +67,7 @@ h1{font-size:clamp(25px,4vw,36px);letter-spacing:-.035em;margin:0}
 .split-check-entry p{font-size:12px;color:#bfb1d8;margin:7px 0 0}
 .split-check-pair{display:grid;grid-template-columns:minmax(80px,.6fr) minmax(160px,1fr) minmax(160px,1fr);gap:10px;align-items:start;padding:9px;margin-top:7px;border-radius:8px;background:#15233b;border:1px solid #384463;overflow-wrap:anywhere}
 .split-check-pair b{color:#d5c4ff}.split-check-pair span{font-size:13px;color:#e5ecff}
-.split-failed-detail td{padding:0 12px 12px!important;border-top:0!important}
+
 @media(max-width:660px){.split-check-pair{grid-template-columns:1fr;gap:5px}}
 </style>
 </head>
@@ -256,16 +256,37 @@ async function result(task){
      for(const h of ["原始文件/板材","处理结果","具体说明"])tr.appendChild(node("th",h));head.appendChild(tr);table.appendChild(head);
      const body=node("tbody");
      for(const x of obj.rows){
-       const row=node("tr");for(const txt of [itemTitle(x),x._status||x.record_status||"—",itemDesc(x)])row.appendChild(node("td",txt));
-       body.appendChild(row);
+       const row=node("tr");
+       row.appendChild(node("td",itemTitle(x)));
+       row.appendChild(node("td",x._status||x.record_status||"—"));
+       const explanation=node("td",undefined,task==="split"&&x._status==="未拆出"?"split-inline-cell":"");
        if(task==="split"&&x._status==="未拆出"){
          const details=splitFailureDetails(x);
          if(details){
-           const detailRow=node("tr",undefined,"split-failed-detail");
-           const cell=node("td");cell.colSpan=3;cell.appendChild(details);
-           detailRow.appendChild(cell);body.appendChild(detailRow);
+           const heading=node("div",itemDesc(x).replace(/；请在前端查看逐号差异/g,""),"split-failure-heading");
+           explanation.appendChild(heading);
+           explanation.appendChild(details);
+         }else{
+           // Old server releases include just the failed index numbers in text.
+           // Show these in the SAME description cell; do not pretend that
+           // actual/source values were returned.
+           explanation.appendChild(node("div",itemDesc(x).replace(/；请在前端查看逐号差异/g,""),"split-failure-heading"));
+           const match=String(x.cause||x.reason||"").match(/问题序号[：:]\\s*([0-9,，、\\s]+)/);
+           if(match){
+             const nums=[...new Set(match[1].split(/[,，、\\s]+/).filter(Boolean))];
+             const notice=node("div",undefined,"split-check-box");
+             notice.appendChild(node("div","未拆出零件序号："+nums.map(n=>"第 "+n+" 号").join("、"),"split-check-summary"));
+             notice.appendChild(node("small","当前结果接口只提供序号，没有返回各号对应的图纸字段、汇总表文件与Excel行号；这些内容尚不能核实，不能猜测。"));
+             explanation.appendChild(notice);
+           }else{
+             explanation.appendChild(node("small","当前结果接口未提供逐号对照明细，需由控制服务返回真实核对记录。"));
+           }
          }
+       }else{
+         explanation.textContent=itemDesc(x);
        }
+       row.appendChild(explanation);
+       body.appendChild(row);
      }
      table.appendChild(body);$("resultRows").replaceChildren(table);
    }
