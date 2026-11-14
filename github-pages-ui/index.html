@@ -212,7 +212,18 @@ function inlineSplitReport(item){
     const binary=atob(padded);
     const bytes=Uint8Array.from(binary,ch=>ch.charCodeAt(0));
     const decoded=JSON.parse(new TextDecoder("utf-8").decode(bytes));
-    return decoded && Array.isArray(decoded.rows) ? decoded : null;
+    if(!decoded || !Array.isArray(decoded.rows))return null;
+    // v2 references one shared source catalog so large boards do not
+    // exceed the GitHub Actions log-line limit.
+    if(decoded.version===2 && Array.isArray(decoded.sources)){
+      decoded.rows=decoded.rows.map(row=>({
+        ...row,
+        source:Number.isInteger(row.source)?(decoded.sources[row.source]||null):row.source,
+        alternatives:(Array.isArray(row.alternatives)?row.alternatives:[])
+          .map(ref=>Number.isInteger(ref)?decoded.sources[ref]:ref).filter(Boolean)
+      }));
+    }
+    return decoded;
   }catch{
     return null;
   }
@@ -299,10 +310,10 @@ async function result(task){
              const nums=[...new Set(match[1].split(/[,，、\s]+/).filter(Boolean))];
              const notice=node("div",undefined,"split-check-box");
              notice.appendChild(node("div","未拆出零件序号："+nums.map(n=>"第 "+n+" 号").join("、"),"split-check-summary"));
-             notice.appendChild(node("small","当前结果接口只提供序号，没有返回各号对应的图纸字段、汇总表文件与Excel行号；这些内容尚不能核实，不能猜测。"));
+             notice.appendChild(node("small","本次运行记录只有序号，没有保存完整的图纸字段及汇总表对照。重新执行新版拆图任务后，本栏才会显示真实的逐号比较；不能凭序号猜测对应行。"));
              explanation.appendChild(notice);
            }else{
-             explanation.appendChild(node("small","当前结果接口未提供逐号对照明细，需由控制服务返回真实核对记录。"));
+             explanation.appendChild(node("small","本次运行记录未包含逐号对照明细。新版本拆图程序运行后才会显示原图字段和汇总表行号。"));
            }
          }
        }else{
