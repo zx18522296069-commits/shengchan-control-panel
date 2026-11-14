@@ -472,7 +472,7 @@ function parseSplitResult(log, latest) {
       });
     }
     match = line.match(/^(?:处理|验证)(?:成功|完成)[：:]\s*(.+?)\s*->\s*(.+)$/);
-    if (match) successes.push({ title: splitBoardId(match[1]), filename: match[1], detail: `已生成 ${match[2].trim()}` });
+    if (match) successes.push({ title: splitBoardId(match[1]), detail: `已生成 ${match[2].trim()}` });
     match = line.match(/^跳过不可读基础表：(.+?)：(.+)$/);
     if (match) warnings.push({ title: match[1], reason: match[2] });
   }
